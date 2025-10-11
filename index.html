@@ -553,7 +553,7 @@
             });
         });
 
-        // Form submission handler - SIMPLE GET VERSION
+        // Form submission handler - FINAL WORKING VERSION
         document.getElementById('marketing-form').addEventListener('submit', function(e) {
             e.preventDefault();
             
@@ -582,17 +582,22 @@
             const goals = Array.from(formData.getAll('goals'));
             params.append('goals', goals.join(', '));
             
-            // Web App URL
+            // NEW Web App URL (with doGet function)
             const scriptURL = 'https://script.google.com/macros/s/AKfycby4DCIt0pfBT-KC-5Q77jdqRA-xzQ1M67EzE_p0A9zlZETB6zuQ59KLumpcVOwLkP4B5Q/exec';
             
-            // Use simple GET request (more reliable)
+            // Use simple GET request (matches doGet function)
             fetch(scriptURL + '?' + params.toString())
             .then(response => response.text())
             .then(result => {
                 console.log('Server response:', result);
-                messageDiv.textContent = 'Thank you! Your consultation request has been submitted successfully. We will contact you shortly.';
-                messageDiv.className = 'form-message success';
-                form.reset();
+                
+                if (result === 'Success') {
+                    messageDiv.textContent = 'Thank you! Your consultation request has been submitted successfully. We will contact you shortly.';
+                    messageDiv.className = 'form-message success';
+                    form.reset();
+                } else {
+                    throw new Error('Server returned: ' + result);
+                }
             })
             .catch(error => {
                 console.error('Error:', error);
