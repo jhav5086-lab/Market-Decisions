@@ -553,7 +553,7 @@
             });
         });
 
-        // Form submission handler - FINAL WORKING VERSION
+        // Form submission handler - UPDATED WITH NEW WEB APP URL
         document.getElementById('marketing-form').addEventListener('submit', function(e) {
             e.preventDefault();
             
@@ -568,7 +568,7 @@
             // Get form data
             const formData = new FormData(form);
             
-            // Build URL parameters
+            // Build URL parameters for POST
             const params = new URLSearchParams();
             params.append('name', formData.get('name'));
             params.append('email', formData.get('email'));
@@ -582,11 +582,17 @@
             const goals = Array.from(formData.getAll('goals'));
             params.append('goals', goals.join(', '));
             
-            // NEW Web App URL (with doGet function)
-            const scriptURL = 'https://script.google.com/macros/s/AKfycby4DCIt0pfBT-KC-5Q77jdqRA-xzQ1M67EzE_p0A9zlZETB6zuQ59KLumpcVOwLkP4B5Q/exec';
+            // NEW Web App URL (using doPost function)
+            const scriptURL = 'https://script.google.com/macros/s/AKfycbw0_c7aWRXf94zX_4nl8-0WAHibZvZwHOOZy-DPH6-4vDlW4vRwAlaSnjkQEhS5U1MSdg/exec';
             
-            // Use simple GET request (matches doGet function)
-            fetch(scriptURL + '?' + params.toString())
+            // Use POST request (matches doPost function in Apps Script)
+            fetch(scriptURL, {
+                method: 'POST',
+                body: params,
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                }
+            })
             .then(response => response.text())
             .then(result => {
                 console.log('Server response:', result);
