@@ -582,19 +582,23 @@
             const goals = Array.from(formData.getAll('goals'));
             params.append('goals', goals.join(', '));
             
-            // NEW Web App URL
-            const scriptURL = 'https://script.google.com/macros/s/AKfycby8Msq5HztsmWba87XOBB9tYQA4lCg2L3LhD0i1RMcqs3CIVkfYIr--tv0YN9A4etC6bg/exec';
+            // NEW Web App URL (Version 6)
+            const scriptURL = 'https://script.google.com/macros/s/AKfycbxcLFu-K9kshnQprbeBNKtFKBJul9QwcwQDM2qWn1rA20qhSFb5b0-LQ93hgA7k7u1iFA/exec';
             
-            // Simple fetch request
-            fetch(scriptURL + '?' + params.toString(), {
+            // Simple POST request with form data
+            fetch(scriptURL, {
                 method: 'POST',
-                mode: 'no-cors'
+                body: params
             })
-            .then(() => {
-                // Success - we can't read response with no-cors, but assume it worked
-                messageDiv.textContent = 'Thank you! Your consultation request has been submitted successfully. We will contact you shortly.';
-                messageDiv.className = 'form-message success';
-                form.reset();
+            .then(response => response.text())
+            .then(result => {
+                if (result === 'Success') {
+                    messageDiv.textContent = 'Thank you! Your consultation request has been submitted successfully. We will contact you shortly.';
+                    messageDiv.className = 'form-message success';
+                    form.reset();
+                } else {
+                    throw new Error(result);
+                }
             })
             .catch(error => {
                 console.error('Error:', error);
