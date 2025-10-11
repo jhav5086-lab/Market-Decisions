@@ -636,7 +636,33 @@
         document.addEventListener('DOMContentLoaded', showCookieBanner);
 
         // Form submission handler - DEBUG VERSION
-        document.getElementById('marketing-form').addEventListener('submit', function(e) {
+        // Form submission handler - SIMPLE TEST VERSION
+document.getElementById('marketing-form').addEventListener('submit', function(e) {
+    console.log('=== FORM SUBMIT EVENT FIRED ===');
+    
+    // Prevent default form submission
+    e.preventDefault();
+    
+    console.log('Form submission prevented successfully');
+    
+    const form = this;
+    const formData = new FormData(form);
+    
+    console.log('=== FORM DATA CONTENTS ===');
+    for (let [key, value] of formData.entries()) {
+        console.log(key + ': ' + value);
+    }
+    console.log('=== END FORM DATA ===');
+    
+    // Just show success message for now
+    const messageDiv = document.getElementById('form-message');
+    messageDiv.style.display = 'block';
+    messageDiv.className = 'form-message success';
+    messageDiv.textContent = 'Form submitted! Check console for data.';
+    
+    // Don't actually submit to Google Apps Script yet
+    return false;
+});
             console.log('Form submitted - checking data...');
             
             const form = this;
