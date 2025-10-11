@@ -5,20 +5,555 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Market Decisions - MMM Consulting</title>
     <style>
-        /* Your existing CSS remains exactly the same */
-        /* ... all your CSS code ... */
+        /* Reset and Base Styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            line-height: 1.6;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        /* Navigation */
+        .navbar {
+            background: #fff;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            position: fixed;
+            width: 100%;
+            top: 0;
+            z-index: 1000;
+            transition: all 0.3s ease;
+        }
+
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 70px;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: 700;
+            color: #2563eb;
+        }
+
+        .nav-menu {
+            display: flex;
+            list-style: none;
+            gap: 30px;
+        }
+
+        .nav-menu a {
+            text-decoration: none;
+            color: #333;
+            font-weight: 500;
+            transition: color 0.3s;
+        }
+
+        .nav-menu a:hover,
+        .nav-menu a.active {
+            color: #2563eb;
+        }
+
+        /* Hero Section */
+        .hero {
+            background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+            color: white;
+            padding: 150px 0 100px;
+            text-align: center;
+            margin-top: 70px;
+        }
+
+        .hero-content {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        .hero h1 {
+            font-size: 3rem;
+            margin-bottom: 20px;
+            font-weight: 700;
+        }
+
+        .hero p {
+            font-size: 1.2rem;
+            margin-bottom: 30px;
+            opacity: 0.9;
+        }
+
+        .cta-button {
+            background: #fff;
+            color: #2563eb;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .cta-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+
+        /* Services Section */
+        .services {
+            padding: 100px 0;
+            background: #f8fafc;
+        }
+
+        .services h2 {
+            text-align: center;
+            font-size: 2.5rem;
+            margin-bottom: 50px;
+            color: #1e293b;
+        }
+
+        .services-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+        }
+
+        .service-card {
+            background: white;
+            padding: 40px 30px;
+            border-radius: 12px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            text-align: center;
+            transition: transform 0.3s;
+        }
+
+        .service-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .service-card h3 {
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+            color: #1e293b;
+        }
+
+        .service-card p {
+            color: #64748b;
+            line-height: 1.6;
+        }
+
+        /* About Section */
+        .about {
+            padding: 100px 0;
+            background: white;
+        }
+
+        .about h2 {
+            text-align: center;
+            font-size: 2.5rem;
+            margin-bottom: 50px;
+            color: #1e293b;
+        }
+
+        .about-content {
+            max-width: 800px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .about-text p {
+            font-size: 1.1rem;
+            margin-bottom: 30px;
+            color: #64748b;
+        }
+
+        .about-text ul {
+            list-style: none;
+            text-align: left;
+            max-width: 400px;
+            margin: 0 auto;
+        }
+
+        .about-text li {
+            padding: 10px 0;
+            font-size: 1.1rem;
+            color: #334155;
+        }
+
+        /* Contact Section */
+        .contact {
+            padding: 100px 0;
+            background: #f8fafc;
+        }
+
+        .contact h2 {
+            text-align: center;
+            font-size: 2.5rem;
+            margin-bottom: 50px;
+            color: #1e293b;
+        }
+
+        .contact-form {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        /* Custom Form Styles */
+        .custom-form {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #1e293b;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #2563eb;
+        }
+
+        .checkbox-group {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+        }
+
+        .checkbox-group label {
+            display: flex;
+            align-items: center;
+            font-weight: normal;
+            cursor: pointer;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+            margin-right: 8px;
+        }
+
+        .form-submit {
+            width: 100%;
+            margin-top: 20px;
+        }
+
+        .form-message {
+            margin-top: 20px;
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+            display: none;
+        }
+
+        .form-message.success {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+            display: block;
+        }
+
+        .form-message.error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+            display: block;
+        }
+
+        .loading-spinner {
+            display: none;
+        }
+
+        .form-submit.loading .button-text {
+            display: none;
+        }
+
+        .form-submit.loading .loading-spinner {
+            display: inline;
+        }
+
+        /* Footer */
+        .footer {
+            background: #1e293b;
+            color: white;
+            text-align: center;
+            padding: 40px 0;
+        }
+
+        .footer p {
+            margin-bottom: 10px;
+            opacity: 0.8;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .nav-menu {
+                display: none;
+            }
+            
+            .hero h1 {
+                font-size: 2.2rem;
+            }
+            
+            .hero p {
+                font-size: 1rem;
+            }
+            
+            .services-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .contact-form {
+                padding: 0 20px;
+            }
+            
+            .hero {
+                padding: 120px 0 80px;
+            }
+            
+            .custom-form {
+                padding: 30px 20px;
+            }
+            
+            .checkbox-group {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body class="loaded">
-    <!-- Your existing HTML remains exactly the same -->
-    <!-- ... all your HTML code ... -->
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="logo">Market Decisions</div>
+            <ul class="nav-menu">
+                <li><a href="#home">Home</a></li>
+                <li><a href="#services">Services</a></li>
+                <li><a href="#about">About</a></li>
+                <li><a href="#contact">Contact</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section id="home" class="hero">
+        <div class="hero-content">
+            <h1>Data-Driven Marketing Decisions</h1>
+            <p>Optimize Your Marketing Spend with Data-Driven Mix Modeling</p>
+            <button class="cta-button" onclick="scrollToContact()">Get Free Consultation</button>
+        </div>
+    </section>
+
+    <!-- Services Section -->
+    <section id="services" class="services">
+        <div class="container">
+            <h2>Our Services</h2>
+            <div class="services-grid">
+                <div class="service-card">
+                    <h3>Marketing Mix Modeling</h3>
+                    <p>Comprehensive analysis of all marketing channels to identify what's truly driving revenue and growth.</p>
+                </div>
+                <div class="service-card">
+                    <h3>Budget Optimization</h3>
+                    <p>Reallocate your marketing spend to high-performing channels and eliminate wasted ad dollars.</p>
+                </div>
+                <div class="service-card">
+                    <h3>ROI Measurement</h3>
+                    <p>Track true marketing effectiveness with custom dashboards and detailed performance reports.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- About Section -->
+    <section id="about" class="about">
+        <div class="container">
+            <h2>Why Choose Market Decisions?</h2>
+            <div class="about-content">
+                <div class="about-text">
+                    <p>We specialize in helping businesses make informed marketing decisions through advanced Marketing Mix Modeling techniques. Our data-driven approach eliminates guesswork and maximizes your return on investment.</p>
+                    <ul>
+                        <li>✓ Data-Driven Decision Making</li>
+                        <li>✓ Transparent Analysis & Reporting</li>
+                        <li>✓ Customized Marketing Insights</li>
+                        <li>✓ Ongoing support and optimization</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Contact Section -->
+    <section id="contact" class="contact">
+        <div class="container">
+            <h2>Get Your Free Marketing Audit</h2>
+            <div class="contact-form">
+                <form id="marketing-form" class="custom-form">
+                    <div class="form-group">
+                        <label for="name">Full Name *</label>
+                        <input type="text" id="name" name="name" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="email">Email Address *</label>
+                        <input type="email" id="email" name="email" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="company">Company</label>
+                        <input type="text" id="company" name="company">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="phone">Phone Number</label>
+                        <input type="tel" id="phone" name="phone">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="website">Website (optional)</label>
+                        <input type="text" id="website" name="website" placeholder="https://example.com">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="monthly-budget">Monthly Marketing Budget</label>
+                        <select id="monthly-budget" name="monthly_budget">
+                            <option value="">Select Budget Range</option>
+                            <option value="under-5k">Under $5,000</option>
+                            <option value="5k-10k">$5,000 - $10,000</option>
+                            <option value="10k-25k">$10,000 - $25,000</option>
+                            <option value="25k-50k">$25,000 - $50,000</option>
+                            <option value="50k-plus">$50,000+</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="challenges">Main Marketing Challenges</label>
+                        <textarea id="challenges" name="challenges" rows="4" placeholder="Tell us about your current marketing challenges..."></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Primary Goals</label>
+                        <div class="checkbox-group">
+                            <label><input type="checkbox" name="goals" value="increase-roi"> Increase ROI</label>
+                            <label><input type="checkbox" name="goals" value="budget-optimization"> Budget Optimization</label>
+                            <label><input type="checkbox" name="goals" value="channel-performance"> Channel Performance Analysis</label>
+                            <label><input type="checkbox" name="goals" value="attribution"> Better Attribution</label>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="cta-button form-submit">
+                        <span class="button-text">Get Free Consultation</span>
+                        <span class="loading-spinner" style="display: none;">Sending...</span>
+                    </button>
+                    
+                    <div id="form-message" class="form-message"></div>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p>© 2024 Market Decisions. All rights reserved.</p>
+            <p>Professional MMM Consulting Services</p>
+        </div>
+    </footer>
 
     <script>
-        // Your existing JavaScript for navigation, scrolling, etc.
-        // ... all your existing JavaScript ...
+        // Smooth scrolling for navigation links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
 
-        // Form submission handler - SIMPLE GET VERSION (REPLACE THE OLD ONE)
+        // Scroll to contact form function
+        function scrollToContact() {
+            document.getElementById('contact').scrollIntoView({
+                behavior: 'smooth'
+            });
+        }
+
+        // Navbar background on scroll
+        window.addEventListener('scroll', function() {
+            const navbar = document.querySelector('.navbar');
+            if (window.scrollY > 100) {
+                navbar.style.background = 'rgba(255, 255, 255, 0.95)';
+                navbar.style.backdropFilter = 'blur(10px)';
+            } else {
+                navbar.style.background = '#fff';
+                navbar.style.backdropFilter = 'none';
+            }
+        });
+
+        // Add active class to current section in navigation
+        window.addEventListener('scroll', function() {
+            const sections = document.querySelectorAll('section');
+            const navLinks = document.querySelectorAll('.nav-menu a');
+            
+            let current = '';
+            
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                const sectionHeight = section.clientHeight;
+                if (scrollY >= (sectionTop - 100)) {
+                    current = section.getAttribute('id');
+                }
+            });
+            
+            navLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href').substring(1) === current) {
+                    link.classList.add('active');
+                }
+            });
+        });
+
+        // Form submission handler - SIMPLE GET VERSION
         document.getElementById('marketing-form').addEventListener('submit', function(e) {
             e.preventDefault();
             
