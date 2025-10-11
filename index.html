@@ -565,36 +565,38 @@
             submitButton.classList.add('loading');
             submitButton.disabled = true;
             
-            // Get form data
+            // Get form data as URL-encoded string (works better with Google Apps Script)
             const formData = new FormData(form);
-            const data = {
-                name: formData.get('name'),
-                email: formData.get('email'),
-                company: formData.get('company'),
-                phone: formData.get('phone'),
-                website: formData.get('website'),
-                monthly_budget: formData.get('monthly_budget'),
-                challenges: formData.get('challenges'),
-                goals: Array.from(formData.getAll('goals')).join(', ')
-            };
+            const data = new URLSearchParams();
             
-            // Google Apps Script integration
-            const scriptURL = 'https://script.google.com/macros/s/AKfycbwcynnaX2xh01qmwluY75SXcbRYroUpRyodnywn19hpKS5JKyIhrU9uJVEv-49s9Hu3fQ/exec';
+            data.append('name', formData.get('name'));
+            data.append('email', formData.get('email'));
+            data.append('company', formData.get('company') || '');
+            data.append('phone', formData.get('phone') || '');
+            data.append('website', formData.get('website') || '');
+            data.append('monthly_budget', formData.get('monthly_budget') || '');
+            data.append('challenges', formData.get('challenges') || '');
             
+            // Handle checkboxes
+            const goals = Array.from(formData.getAll('goals'));
+            data.append('goals', goals.join(', '));
+            
+            // Updated Google Apps Script URL
+            const scriptURL = 'https://script.google.com/macros/s/AKfycbyiGNT1WYALu8gmyffc5VLDF6hntEUZzUB1cOv9YpJjMfcsQIx1AcWaKZCgVbKP4brz8A/exec';
+            
+            // Submit to Google Apps Script
             fetch(scriptURL, {
                 method: 'POST',
-                body: JSON.stringify(data),
+                mode: 'no-cors',
                 headers: {
-                    'Content-Type': 'application/json'
-                }
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: data
             })
-            .then(response => response.json())
-            .then(data => {
-                // Show success message
+            .then(() => {
+                // With no-cors, we can't read the response, but assume success
                 messageDiv.textContent = 'Thank you! Your consultation request has been submitted successfully. We will contact you shortly.';
                 messageDiv.className = 'form-message success';
-                
-                // Reset form
                 form.reset();
             })
             .catch(error => {
@@ -603,11 +605,8 @@
                 messageDiv.className = 'form-message error';
             })
             .finally(() => {
-                // Reset button state
                 submitButton.classList.remove('loading');
                 submitButton.disabled = false;
-                
-                // Scroll to message
                 messageDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
             });
         });
