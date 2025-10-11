@@ -466,7 +466,7 @@
             <div class="contact-form">
                 <form id="marketing-form" class="custom-form" 
                       action="https://script.google.com/macros/s/AKfycbymOZIbXPmHKUr01YcXENhi8RX9Bi3jGu1U2xJKH_t-/dev" 
-                      method="POST"
+                      method="POST" 
                       enctype="application/x-www-form-urlencoded"
                       target="hiddenFrame">
                     
@@ -635,10 +635,20 @@
         // Show banner on page load
         document.addEventListener('DOMContentLoaded', showCookieBanner);
 
-        // Form submission handler - Shows success message
+        // Form submission handler - DEBUG VERSION
         document.getElementById('marketing-form').addEventListener('submit', function(e) {
-            const submitButton = this.querySelector('.form-submit');
+            console.log('Form submitted - checking data...');
+            
+            const form = this;
+            const submitButton = form.querySelector('.form-submit');
             const messageDiv = document.getElementById('form-message');
+            
+            // Show what data is being sent
+            const formData = new FormData(form);
+            console.log('FormData contents:');
+            for (let [key, value] of formData.entries()) {
+                console.log(key + ': ' + value);
+            }
             
             // Show loading state
             submitButton.disabled = true;
