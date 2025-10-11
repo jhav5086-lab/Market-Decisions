@@ -320,6 +320,30 @@
             opacity: 0.8;
         }
 
+        /* Cookie Banner */
+        .cookie-banner {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #1e293b;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            z-index: 1000;
+            display: none;
+        }
+
+        .cookie-banner button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-left: 10px;
+        }
+
         /* Responsive Design */
         @media (max-width: 768px) {
             .nav-menu {
@@ -352,6 +376,15 @@
             
             .checkbox-group {
                 grid-template-columns: 1fr;
+            }
+            
+            .cookie-banner {
+                padding: 15px;
+            }
+            
+            .cookie-banner button {
+                margin-top: 10px;
+                margin-left: 0;
             }
         }
     </style>
@@ -396,6 +429,13 @@
                 <div class="service-card">
                     <h3>ROI Measurement</h3>
                     <p>Track true marketing effectiveness with custom dashboards and detailed performance reports.</p>
+                </div>
+                <div class="service-card">
+                    <h3>AI-Powered Data Analysis</h3>
+                    <p>Get instant insights from your marketing data with our automated analysis platform.</p>
+                    <button class="cta-button" onclick="openAnalysisPlatform()" style="margin-top: 15px; padding: 10px 20px; font-size: 0.9rem;">
+                        Analyze Your Data
+                    </button>
                 </div>
             </div>
         </div>
@@ -493,8 +533,20 @@
         <div class="container">
             <p>© 2024 Market Decisions. All rights reserved.</p>
             <p>Professional MMM Consulting Services</p>
+            <div style="margin-top: 15px;">
+                <a href="privacy-policy.html" style="color: #94a3b8; margin: 0 10px;">Privacy Policy</a>
+                <a href="terms-of-service.html" style="color: #94a3b8; margin: 0 10px;">Terms of Service</a>
+            </div>
         </div>
     </footer>
+
+    <!-- Cookie Consent Banner -->
+    <div id="cookieBanner" class="cookie-banner">
+        <div class="container">
+            <p>We use essential cookies to provide our services. By using our website, you agree to our use of cookies.</p>
+            <button onclick="acceptCookies()">Accept</button>
+        </div>
+    </div>
 
     <script>
         // Smooth scrolling for navigation links
@@ -516,6 +568,12 @@
             document.getElementById('contact').scrollIntoView({
                 behavior: 'smooth'
             });
+        }
+
+        // Open analysis platform
+        function openAnalysisPlatform() {
+            alert('Our AI analysis platform is launching soon! Currently in development.');
+            // window.open('https://your-analysis-platform.com', '_blank');
         }
 
         // Navbar background on scroll
@@ -553,7 +611,22 @@
             });
         });
 
-        // Form submission handler - UPDATED WITH NEW WEB APP URL
+        // Cookie Consent
+        function showCookieBanner() {
+            if (!localStorage.getItem('cookiesAccepted')) {
+                document.getElementById('cookieBanner').style.display = 'block';
+            }
+        }
+
+        function acceptCookies() {
+            localStorage.setItem('cookiesAccepted', 'true');
+            document.getElementById('cookieBanner').style.display = 'none';
+        }
+
+        // Show banner on page load
+        document.addEventListener('DOMContentLoaded', showCookieBanner);
+
+        // Form submission handler - SECURE VERSION
         document.getElementById('marketing-form').addEventListener('submit', function(e) {
             e.preventDefault();
             
@@ -565,27 +638,56 @@
             submitButton.classList.add('loading');
             submitButton.disabled = true;
             
-            // Get form data
+            // Sanitize and validate inputs
+            function sanitizeInput(input) {
+                if (!input) return '';
+                return input.toString().replace(/[<>]/g, '').substring(0, 1000);
+            }
+            
+            function isValidEmail(email) {
+                return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+            }
+            
+            // Get and validate form data
             const formData = new FormData(form);
+            const name = sanitizeInput(formData.get('name'));
+            const email = formData.get('email');
+            
+            // Basic validation
+            if (!name || name.length < 2) {
+                messageDiv.textContent = 'Please enter a valid name.';
+                messageDiv.className = 'form-message error';
+                submitButton.classList.remove('loading');
+                submitButton.disabled = false;
+                return;
+            }
+            
+            if (!isValidEmail(email)) {
+                messageDiv.textContent = 'Please enter a valid email address.';
+                messageDiv.className = 'form-message error';
+                submitButton.classList.remove('loading');
+                submitButton.disabled = false;
+                return;
+            }
             
             // Build URL parameters for POST
             const params = new URLSearchParams();
-            params.append('name', formData.get('name'));
-            params.append('email', formData.get('email'));
-            params.append('company', formData.get('company') || '');
-            params.append('phone', formData.get('phone') || '');
-            params.append('website', formData.get('website') || '');
-            params.append('monthly_budget', formData.get('monthly_budget') || '');
-            params.append('challenges', formData.get('challenges') || '');
+            params.append('name', name);
+            params.append('email', sanitizeInput(email));
+            params.append('company', sanitizeInput(formData.get('company')));
+            params.append('phone', sanitizeInput(formData.get('phone')));
+            params.append('website', sanitizeInput(formData.get('website')));
+            params.append('monthly_budget', sanitizeInput(formData.get('monthly_budget')));
+            params.append('challenges', sanitizeInput(formData.get('challenges')));
             
             // Handle checkboxes
             const goals = Array.from(formData.getAll('goals'));
-            params.append('goals', goals.join(', '));
+            params.append('goals', goals.map(goal => sanitizeInput(goal)).join(', '));
             
-            // NEW Web App URL (using doPost function)
-            const scriptURL = 'https://script.google.com/macros/s/AKfycbyJ2M3tpqx1fTmqrvYcbMDCRNWTTjlp-JFLFBk4W9Ce1kia6vy_Xgm_HmfsEt6WDk6bBw/exec';
+            // Web App URL
+            const scriptURL = 'https://script.google.com/macros/s/AKfycbw0_c7aWRXf94zX_4nl8-0WAHibZvZwHOOZy-DPH6-4vDlW4vRwAlaSnjkQEhS5U1MSdg/exec';
             
-            // Use POST request (matches doPost function in Apps Script)
+            // Use POST request
             fetch(scriptURL, {
                 method: 'POST',
                 body: params,
