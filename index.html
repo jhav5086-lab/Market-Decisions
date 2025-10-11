@@ -464,7 +464,11 @@
         <div class="container">
             <h2>Get Your Free Marketing Audit</h2>
             <div class="contact-form">
-                <form id="marketing-form" class="custom-form">
+                <form id="marketing-form" class="custom-form" 
+                      action="https://script.google.com/macros/s/AKfycbw0_c7aWRXf94zX_4nl8-0WAHibZvZwHOOZy-DPH6-4vDlW4vRwAlaSnjkQEhS5U1MSdg/exec" 
+                      method="GET" 
+                      target="hiddenFrame">
+                    
                     <div class="form-group">
                         <label for="name">Full Name *</label>
                         <input type="text" id="name" name="name" required>
@@ -519,11 +523,15 @@
                     
                     <button type="submit" class="cta-button form-submit">
                         <span class="button-text">Get Free Consultation</span>
-                        <span class="loading-spinner" style="display: none;">Sending...</span>
                     </button>
                     
-                    <div id="form-message" class="form-message"></div>
+                    <div id="form-message" class="form-message" style="display: none;">
+                        Thank you! Your consultation request has been submitted successfully. We will contact you shortly.
+                    </div>
                 </form>
+                
+                <!-- Hidden iframe for form submission -->
+                <iframe name="hiddenFrame" style="display: none; width: 0; height: 0; border: none;"></iframe>
             </div>
         </div>
     </section>
@@ -626,97 +634,28 @@
         // Show banner on page load
         document.addEventListener('DOMContentLoaded', showCookieBanner);
 
-        // Form submission handler - SECURE VERSION
+        // Form submission handler - Shows success message
         document.getElementById('marketing-form').addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            const form = this;
-            const submitButton = form.querySelector('.form-submit');
+            const submitButton = this.querySelector('.form-submit');
             const messageDiv = document.getElementById('form-message');
             
             // Show loading state
-            submitButton.classList.add('loading');
             submitButton.disabled = true;
+            submitButton.innerHTML = 'Sending...';
             
-            // Sanitize and validate inputs
-            function sanitizeInput(input) {
-                if (!input) return '';
-                return input.toString().replace(/[<>]/g, '').substring(0, 1000);
-            }
-            
-            function isValidEmail(email) {
-                return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-            }
-            
-            // Get and validate form data
-            const formData = new FormData(form);
-            const name = sanitizeInput(formData.get('name'));
-            const email = formData.get('email');
-            
-            // Basic validation
-            if (!name || name.length < 2) {
-                messageDiv.textContent = 'Please enter a valid name.';
-                messageDiv.className = 'form-message error';
-                submitButton.classList.remove('loading');
-                submitButton.disabled = false;
-                return;
-            }
-            
-            if (!isValidEmail(email)) {
-                messageDiv.textContent = 'Please enter a valid email address.';
-                messageDiv.className = 'form-message error';
-                submitButton.classList.remove('loading');
-                submitButton.disabled = false;
-                return;
-            }
-            
-            // Build URL parameters for POST
-            const params = new URLSearchParams();
-            params.append('name', name);
-            params.append('email', sanitizeInput(email));
-            params.append('company', sanitizeInput(formData.get('company')));
-            params.append('phone', sanitizeInput(formData.get('phone')));
-            params.append('website', sanitizeInput(formData.get('website')));
-            params.append('monthly_budget', sanitizeInput(formData.get('monthly_budget')));
-            params.append('challenges', sanitizeInput(formData.get('challenges')));
-            
-            // Handle checkboxes
-            const goals = Array.from(formData.getAll('goals'));
-            params.append('goals', goals.map(goal => sanitizeInput(goal)).join(', '));
-            
-            // Web App URL
-            const scriptURL = 'https://script.google.com/macros/s/AKfycbw0_c7aWRXf94zX_4nl8-0WAHibZvZwHOOZy-DPH6-4vDlW4vRwAlaSnjkQEhS5U1MSdg/exec';
-            
-            // Use POST request
-            fetch(scriptURL, {
-                method: 'POST',
-                body: params,
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                }
-            })
-            .then(response => response.text())
-            .then(result => {
-                console.log('Server response:', result);
-                
-                if (result === 'Success') {
-                    messageDiv.textContent = 'Thank you! Your consultation request has been submitted successfully. We will contact you shortly.';
-                    messageDiv.className = 'form-message success';
-                    form.reset();
-                } else {
-                    throw new Error('Server returned: ' + result);
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                messageDiv.textContent = 'Sorry, there was an error submitting your form. Please try again or contact us directly.';
-                messageDiv.className = 'form-message error';
-            })
-            .finally(() => {
-                submitButton.classList.remove('loading');
-                submitButton.disabled = false;
+            // Show success message after a short delay
+            setTimeout(function() {
+                messageDiv.style.display = 'block';
+                messageDiv.className = 'form-message success';
+                messageDiv.textContent = 'Thank you! Your consultation request has been submitted successfully. We will contact you shortly.';
                 messageDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            });
+                
+                // Reset button after 3 seconds
+                setTimeout(function() {
+                    submitButton.disabled = false;
+                    submitButton.innerHTML = '<span class="button-text">Get Free Consultation</span>';
+                }, 3000);
+            }, 1000);
         });
     </script>
 </body>
