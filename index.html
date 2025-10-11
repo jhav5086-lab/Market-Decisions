@@ -553,7 +553,7 @@
             });
         });
 
-        // Form submission handler
+        // Form submission handler - SIMPLE WORKING VERSION
         document.getElementById('marketing-form').addEventListener('submit', function(e) {
             e.preventDefault();
             
@@ -565,36 +565,33 @@
             submitButton.classList.add('loading');
             submitButton.disabled = true;
             
-            // Get form data as URL-encoded string (works better with Google Apps Script)
+            // Get form data
             const formData = new FormData(form);
-            const data = new URLSearchParams();
             
-            data.append('name', formData.get('name'));
-            data.append('email', formData.get('email'));
-            data.append('company', formData.get('company') || '');
-            data.append('phone', formData.get('phone') || '');
-            data.append('website', formData.get('website') || '');
-            data.append('monthly_budget', formData.get('monthly_budget') || '');
-            data.append('challenges', formData.get('challenges') || '');
+            // Build URL parameters
+            const params = new URLSearchParams();
+            params.append('name', formData.get('name'));
+            params.append('email', formData.get('email'));
+            params.append('company', formData.get('company') || '');
+            params.append('phone', formData.get('phone') || '');
+            params.append('website', formData.get('website') || '');
+            params.append('monthly_budget', formData.get('monthly_budget') || '');
+            params.append('challenges', formData.get('challenges') || '');
             
             // Handle checkboxes
             const goals = Array.from(formData.getAll('goals'));
-            data.append('goals', goals.join(', '));
+            params.append('goals', goals.join(', '));
             
-            // Updated Google Apps Script URL
-            const scriptURL = 'https://script.google.com/macros/s/AKfycbyiGNT1WYALu8gmyffc5VLDF6hntEUZzUB1cOv9YpJjMfcsQIx1AcWaKZCgVbKP4brz8A/exec';
+            // NEW Web App URL
+            const scriptURL = 'https://script.google.com/macros/s/AKfycby8Msq5HztsmWba87XOBB9tYQA4lCg2L3LhD0i1RMcqs3CIVkfYIr--tv0YN9A4etC6bg/exec';
             
-            // Submit to Google Apps Script
-            fetch(scriptURL, {
+            // Simple fetch request
+            fetch(scriptURL + '?' + params.toString(), {
                 method: 'POST',
-                mode: 'no-cors',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: data
+                mode: 'no-cors'
             })
             .then(() => {
-                // With no-cors, we can't read the response, but assume success
+                // Success - we can't read response with no-cors, but assume it worked
                 messageDiv.textContent = 'Thank you! Your consultation request has been submitted successfully. We will contact you shortly.';
                 messageDiv.className = 'form-message success';
                 form.reset();
