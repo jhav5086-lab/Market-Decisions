@@ -285,14 +285,12 @@
             background: #dcfce7;
             color: #166534;
             border: 1px solid #bbf7d0;
-            display: block;
         }
 
         .form-message.error {
             background: #fee2e2;
             color: #991b1b;
             border: 1px solid #fecaca;
-            display: block;
         }
 
         .loading-spinner {
@@ -643,15 +641,6 @@
             messageDiv.className = 'form-message';
 
             try {
-                // Collect form data
-                const formData = new FormData(form);
-                
-                console.log('=== FORM DATA CONTENTS ===');
-                for (let [key, value] of formData.entries()) {
-                    console.log(key + ': ' + value);
-                }
-                console.log('=== END FORM DATA ===');
-
                 // Prepare data for Google Apps Script
                 const data = new URLSearchParams();
                 data.append('name', document.getElementById('name').value);
@@ -674,20 +663,28 @@
                 // Submit to Google Apps Script
                 fetch('https://script.google.com/macros/s/AKfycbymOZIbXPmHKUr01YcXENhi8RX9Bi3jGu1U2xJKH_t-/exec', {
                     method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
                     body: data
                 })
-                .then(response => response.text())
+                .then(response => response.json())
                 .then(result => {
-                    console.log('Success:', result);
-                    messageDiv.style.display = 'block';
-                    messageDiv.className = 'form-message success';
-                    messageDiv.textContent = 'Thank you! Your consultation request has been submitted successfully. We will contact you shortly.';
+                    console.log('Google Apps Script response:', result);
                     
-                    // Reset form
-                    form.reset();
+                    if (result.status === 'success') {
+                        messageDiv.style.display = 'block';
+                        messageDiv.className = 'form-message success';
+                        messageDiv.textContent = 'Thank you! Your consultation request has been submitted successfully. We will contact you shortly.';
+                        
+                        // Reset form
+                        form.reset();
+                    } else {
+                        throw new Error(result.message);
+                    }
                 })
                 .catch(error => {
-                    console.error('Error:', error);
+                    console.error('Fetch error:', error);
                     messageDiv.style.display = 'block';
                     messageDiv.className = 'form-message error';
                     messageDiv.textContent = 'Sorry, there was an error submitting your form. Please try again or contact us directly.';
