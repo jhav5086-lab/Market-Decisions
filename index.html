@@ -464,11 +464,7 @@
         <div class="container">
             <h2>Get Your Free Marketing Audit</h2>
             <div class="contact-form">
-                <form id="marketing-form" class="custom-form" 
-                      action="https://script.google.com/macros/s/AKfycbymOZIbXPmHKUr01YcXENhi8RX9Bi3jGu1U2xJKH_t-/dev" 
-                      method="POST" 
-                      enctype="application/x-www-form-urlencoded"
-                      target="hiddenFrame">
+                <form id="marketing-form" class="custom-form">
                     
                     <div class="form-group">
                         <label for="name">Full Name *</label>
@@ -524,15 +520,11 @@
                     
                     <button type="submit" class="cta-button form-submit">
                         <span class="button-text">Get Free Consultation</span>
+                        <span class="loading-spinner">Sending...</span>
                     </button>
                     
-                    <div id="form-message" class="form-message" style="display: none;">
-                        Thank you! Your consultation request has been submitted successfully. We will contact you shortly.
-                    </div>
+                    <div id="form-message" class="form-message"></div>
                 </form>
-                
-                <!-- Hidden iframe for form submission -->
-                <iframe name="hiddenFrame" style="display: none; width: 0; height: 0; border: none;"></iframe>
             </div>
         </div>
     </section>
@@ -582,7 +574,6 @@
         // Open analysis platform
         function openAnalysisPlatform() {
             alert('Our AI analysis platform is launching soon! Currently in development.');
-            // window.open('https://your-analysis-platform.com', '_blank');
         }
 
         // Navbar background on scroll
@@ -635,64 +626,85 @@
         // Show banner on page load
         document.addEventListener('DOMContentLoaded', showCookieBanner);
 
-        // Form submission handler - DEBUG VERSION
-        // Form submission handler - SIMPLE TEST VERSION
-document.getElementById('marketing-form').addEventListener('submit', function(e) {
-    console.log('=== FORM SUBMIT EVENT FIRED ===');
-    
-    // Prevent default form submission
-    e.preventDefault();
-    
-    console.log('Form submission prevented successfully');
-    
-    const form = this;
-    const formData = new FormData(form);
-    
-    console.log('=== FORM DATA CONTENTS ===');
-    for (let [key, value] of formData.entries()) {
-        console.log(key + ': ' + value);
-    }
-    console.log('=== END FORM DATA ===');
-    
-    // Just show success message for now
-    const messageDiv = document.getElementById('form-message');
-    messageDiv.style.display = 'block';
-    messageDiv.className = 'form-message success';
-    messageDiv.textContent = 'Form submitted! Check console for data.';
-    
-    // Don't actually submit to Google Apps Script yet
-    return false;
-});
-            console.log('Form submitted - checking data...');
+        // Form submission handler - WORKING VERSION
+        document.getElementById('marketing-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            console.log('=== FORM SUBMIT EVENT FIRED ===');
             
             const form = this;
             const submitButton = form.querySelector('.form-submit');
             const messageDiv = document.getElementById('form-message');
             
-            // Show what data is being sent
-            const formData = new FormData(form);
-            console.log('FormData contents:');
-            for (let [key, value] of formData.entries()) {
-                console.log(key + ': ' + value);
-            }
-            
             // Show loading state
             submitButton.disabled = true;
-            submitButton.innerHTML = 'Sending...';
-            
-            // Show success message after a short delay
-            setTimeout(function() {
-                messageDiv.style.display = 'block';
-                messageDiv.className = 'form-message success';
-                messageDiv.textContent = 'Thank you! Your consultation request has been submitted successfully. We will contact you shortly.';
-                messageDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            submitButton.classList.add('loading');
+            messageDiv.style.display = 'none';
+            messageDiv.className = 'form-message';
+
+            try {
+                // Collect form data
+                const formData = new FormData(form);
                 
-                // Reset button after 3 seconds
-                setTimeout(function() {
+                console.log('=== FORM DATA CONTENTS ===');
+                for (let [key, value] of formData.entries()) {
+                    console.log(key + ': ' + value);
+                }
+                console.log('=== END FORM DATA ===');
+
+                // Prepare data for Google Apps Script
+                const data = new URLSearchParams();
+                data.append('name', document.getElementById('name').value);
+                data.append('email', document.getElementById('email').value);
+                data.append('company', document.getElementById('company').value || '');
+                data.append('phone', document.getElementById('phone').value || '');
+                data.append('website', document.getElementById('website').value || '');
+                data.append('monthly_budget', document.getElementById('monthly-budget').value || '');
+                data.append('challenges', document.getElementById('challenges').value || '');
+                
+                // Handle checkboxes
+                const goals = [];
+                document.querySelectorAll('input[name="goals"]:checked').forEach(checkbox => {
+                    goals.push(checkbox.value);
+                });
+                data.append('goals', goals.join(', '));
+
+                console.log('Submitting to Google Apps Script:', data.toString());
+
+                // Submit to Google Apps Script
+                fetch('https://script.google.com/macros/s/AKfycbymOZIbXPmHKUr01YcXENhi8RX9Bi3jGu1U2xJKH_t-/exec', {
+                    method: 'POST',
+                    body: data
+                })
+                .then(response => response.text())
+                .then(result => {
+                    console.log('Success:', result);
+                    messageDiv.style.display = 'block';
+                    messageDiv.className = 'form-message success';
+                    messageDiv.textContent = 'Thank you! Your consultation request has been submitted successfully. We will contact you shortly.';
+                    
+                    // Reset form
+                    form.reset();
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    messageDiv.style.display = 'block';
+                    messageDiv.className = 'form-message error';
+                    messageDiv.textContent = 'Sorry, there was an error submitting your form. Please try again or contact us directly.';
+                });
+
+            } catch (error) {
+                console.error('Error in form submission:', error);
+                messageDiv.style.display = 'block';
+                messageDiv.className = 'form-message error';
+                messageDiv.textContent = 'Sorry, there was an error. Please try again.';
+            } finally {
+                // Reset button state after a delay
+                setTimeout(() => {
                     submitButton.disabled = false;
-                    submitButton.innerHTML = '<span class="button-text">Get Free Consultation</span>';
+                    submitButton.classList.remove('loading');
                 }, 3000);
-            }, 1000);
+            }
         });
     </script>
 </body>
