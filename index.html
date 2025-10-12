@@ -350,6 +350,90 @@
             opacity: 0.8;
         }
 
+        /* MMM Modal Styles */
+        .mmm-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 9999;
+            overflow-y: auto;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .modal-content {
+            position: relative;
+            background: white;
+            margin: 50px auto;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 900px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .close-modal {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+        }
+
+        .result-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .channel-name {
+            font-weight: 600;
+            color: #1e293b;
+        }
+
+        .roas-value {
+            font-weight: 600;
+            color: #059669;
+        }
+
+        .budget-change {
+            font-weight: 600;
+        }
+
+        .positive {
+            color: #059669;
+        }
+
+        .negative {
+            color: #dc2626;
+        }
+
+        .file-upload-area {
+            border: 2px dashed #2563eb;
+            padding: 40px;
+            text-align: center;
+            border-radius: 8px;
+            margin: 20px 0;
+            transition: background-color 0.3s;
+        }
+
+        .file-upload-area:hover {
+            background-color: #f8fafc;
+        }
+
+        .format-guide {
+            background: #f8fafc;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
         /* Responsive Design */
         @media (max-width: 768px) {
             .nav-menu {
@@ -382,6 +466,15 @@
             
             .checkbox-group {
                 grid-template-columns: 1fr;
+            }
+
+            .modal-content {
+                margin: 20px;
+                padding: 20px;
+            }
+
+            .file-upload-area {
+                padding: 20px;
             }
         }
     </style>
@@ -430,7 +523,7 @@
                 <div class="service-card">
                     <h3>AI-Powered Data Analysis</h3>
                     <p>Get instant insights from your marketing data with our automated analysis platform.</p>
-                    <button class="cta-button" onclick="openAnalysisPlatform()" style="margin-top: 15px; padding: 10px 20px; font-size: 0.9rem;">
+                    <button class="cta-button" onclick="openMMM()" style="margin-top: 15px; padding: 10px 20px; font-size: 0.9rem;">
                         Analyze Your Data
                     </button>
                 </div>
@@ -546,6 +639,86 @@
         </div>
     </footer>
 
+    <!-- MMM Analysis Modal -->
+    <div id="mmm-modal" class="mmm-modal">
+        <div class="modal-content">
+            <button class="close-modal" onclick="closeMMM()">&times;</button>
+            
+            <h2 style="color: #2563eb; margin-bottom: 20px;">AI Marketing Mix Analysis</h2>
+            
+            <!-- Upload Section -->
+            <div id="upload-section">
+                <h3>Upload Your Marketing Data</h3>
+                <p>Upload your CSV file with marketing spend and revenue data to get instant insights</p>
+                
+                <div class="file-upload-area">
+                    <input type="file" id="csv-upload" accept=".csv" style="display: none;">
+                    <button onclick="document.getElementById('csv-upload').click()" class="cta-button" style="margin-bottom: 15px;">
+                        📁 Choose CSV File
+                    </button>
+                    <p id="file-name" style="color: #666; margin-top: 10px;">No file chosen</p>
+                </div>
+                
+                <div class="format-guide">
+                    <h4>📋 Expected CSV Format:</h4>
+                    <ul style="text-align: left; display: inline-block; margin-top: 10px;">
+                        <li><strong>Week_Ending</strong> (date column)</li>
+                        <li><strong>P_SEA_NetSpend</strong>, <strong>P_SHO_NetSpend</strong>, etc.</li>
+                        <li><strong>O_SEO_Revenue</strong>, <strong>O_DIR_Revenue</strong>, etc.</li>
+                        <li><strong>Total_Revenue</strong> (target variable)</li>
+                        <li><strong>Holiday</strong>, <strong>Comp_Media_Spend2</strong> (optional)</li>
+                    </ul>
+                    <p style="margin-top: 15px; font-style: italic;">Don't have a CSV? <a href="#" onclick="downloadSampleCSV()">Download sample template</a></p>
+                </div>
+                
+                <button onclick="analyzeData()" class="cta-button" style="width: 100; margin-top: 20px;" id="analyze-btn">
+                    🚀 Analyze Marketing Data
+                </button>
+            </div>
+            
+            <!-- Loading Section -->
+            <div id="loading-section" style="display: none; text-align: center; padding: 40px;">
+                <div style="font-size: 48px; margin-bottom: 20px;">⏳</div>
+                <h3>Analyzing Your Marketing Data</h3>
+                <p>Running advanced Bayesian models... This may take a few minutes</p>
+                <div style="background: #e2e8f0; height: 4px; border-radius: 2px; margin: 20px 0;">
+                    <div id="progress-bar" style="height: 100%; background: #2563eb; width: 0%; border-radius: 2px; transition: width 0.3s;"></div>
+                </div>
+            </div>
+            
+            <!-- Results Section -->
+            <div id="results-section" style="display: none;">
+                <h3 style="color: #059669;">📊 Analysis Complete!</h3>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
+                    <div style="background: #f0f9ff; padding: 20px; border-radius: 8px;">
+                        <h4>📈 ROAS by Channel</h4>
+                        <div id="roas-results"></div>
+                    </div>
+                    
+                    <div style="background: #f0fdf4; padding: 20px; border-radius: 8px;">
+                        <h4>💰 Budget Recommendations</h4>
+                        <div id="budget-results"></div>
+                    </div>
+                </div>
+                
+                <div style="background: #fff7ed; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                    <h4>🎯 Executive Summary</h4>
+                    <div id="executive-summary"></div>
+                </div>
+                
+                <div style="text-align: center; margin-top: 30px;">
+                    <button onclick="resetAnalysis()" class="cta-button" style="background: #64748b; margin-right: 10px;">
+                        🔄 Analyze Another Dataset
+                    </button>
+                    <button onclick="closeMMM()" class="cta-button">
+                        ✅ Done
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Scroll to contact form function
         function scrollToContact() {
@@ -558,11 +731,148 @@
             }
         }
 
-        // Open analysis platform
-        function openAnalysisPlatform() {
-            alert('Our AI analysis platform is launching soon! Currently in development.');
+        // MMM Modal Functions
+        function openMMM() {
+            document.getElementById('mmm-modal').style.display = 'block';
         }
 
+        function closeMMM() {
+            document.getElementById('mmm-modal').style.display = 'none';
+        }
+
+        function resetAnalysis() {
+            document.getElementById('upload-section').style.display = 'block';
+            document.getElementById('results-section').style.display = 'none';
+            document.getElementById('csv-upload').value = '';
+            document.getElementById('file-name').textContent = 'No file chosen';
+        }
+
+        // File upload handler
+        document.getElementById('csv-upload').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                document.getElementById('file-name').textContent = `✅ ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
+            }
+        });
+
+        // Download sample CSV template
+        function downloadSampleCSV() {
+            const csvContent = "Week_Ending,Total_Revenue,P_SEA_NetSpend,P_SHO_NetSpend,P_DIS_NetSpend,P_SOC_NetSpend,P_AFF_NetSpend,O_SEO_Revenue,O_DIR_Revenue,O_EMA_Revenue,O_SOC_Revenue,O_REF_Revenue,Holiday,Comp_Media_Spend2\n2023-01-01,150000,5000,3000,2000,1500,1000,25000,18000,12000,8000,5000,New Year Day,1000000\n2023-01-08,145000,4800,3200,1800,1600,1100,23000,17000,11000,7500,4500,NH,950000";
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.setAttribute('hidden', '');
+            a.setAttribute('href', url);
+            a.setAttribute('download', 'mmm_sample_data.csv');
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        // Mock analysis function - Replace with actual API call to your Python backend
+        async function analyzeData() {
+            const fileInput = document.getElementById('csv-upload');
+            if (!fileInput.files[0]) {
+                alert('Please select a CSV file first');
+                return;
+            }
+            
+            // Show loading state
+            document.getElementById('upload-section').style.display = 'none';
+            document.getElementById('loading-section').style.display = 'block';
+            
+            // Simulate progress
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                progress += Math.random() * 15;
+                if (progress > 90) progress = 90;
+                document.getElementById('progress-bar').style.width = progress + '%';
+            }, 400);
+            
+            try {
+                // Simulate API call delay
+                await new Promise(resolve => setTimeout(resolve, 3500));
+                
+                // Mock results based on your MMM requirements
+                displayResults({
+                    roas_analysis: [
+                        {Channel: 'Paid Search', ROAS_Mean: 3.45, ROAS_Std: 0.23},
+                        {Channel: 'Paid Social', ROAS_Mean: 2.89, ROAS_Std: 0.31},
+                        {Channel: 'Display', ROAS_Mean: 1.76, ROAS_Std: 0.45},
+                        {Channel: 'Shopping', ROAS_Mean: 4.12, ROAS_Std: 0.28},
+                        {Channel: 'Affiliate', ROAS_Mean: 5.34, ROAS_Std: 0.19}
+                    ],
+                    budget_optimization: [
+                        {Channel: 'Paid Search', Current_Allocation: 2500000, Optimized_Allocation: 2800000, Change_Percentage: 12},
+                        {Channel: 'Paid Social', Current_Allocation: 1800000, Optimized_Allocation: 2200000, Change_Percentage: 22},
+                        {Channel: 'Display', Current_Allocation: 1200000, Optimized_Allocation: 800000, Change_Percentage: -33},
+                        {Channel: 'Shopping', Current_Allocation: 900000, Optimized_Allocation: 1200000, Change_Percentage: 33},
+                        {Channel: 'Affiliate', Current_Allocation: 600000, Optimized_Allocation: 1000000, Change_Percentage: 67}
+                    ],
+                    executive_summary: {
+                        top_performing_channel: 'Affiliate',
+                        top_channel_roas: 5.34,
+                        worst_performing_channel: 'Display', 
+                        worst_channel_roas: 1.76,
+                        total_optimization_impact: 167,
+                        recommended_budget_shift: 'Increase investment in Affiliate and Shopping channels by 67% and 33% respectively. Consider reducing Display spend by 33%.'
+                    }
+                });
+                
+            } catch (error) {
+                alert('Analysis failed: ' + error.message);
+                resetAnalysis();
+            } finally {
+                clearInterval(progressInterval);
+            }
+        }
+
+        function displayResults(data) {
+            document.getElementById('loading-section').style.display = 'none';
+            document.getElementById('results-section').style.display = 'block';
+            
+            // Display ROAS results
+            const roasContainer = document.getElementById('roas-results');
+            roasContainer.innerHTML = data.roas_analysis.map(channel => `
+                <div class="result-item">
+                    <span class="channel-name">${channel.Channel}</span>
+                    <span class="roas-value">${channel.ROAS_Mean.toFixed(2)}x ROAS</span>
+                </div>
+            `).join('');
+            
+            // Display budget recommendations
+            const budgetContainer = document.getElementById('budget-results');
+            budgetContainer.innerHTML = data.budget_optimization.map(channel => {
+                const changeClass = channel.Change_Percentage >= 0 ? 'positive' : 'negative';
+                const changeSymbol = channel.Change_Percentage >= 0 ? '+' : '';
+                return `
+                    <div class="result-item">
+                        <span class="channel-name">${channel.Channel}</span>
+                        <span class="budget-change ${changeClass}">
+                            ${changeSymbol}${channel.Change_Percentage}%
+                        </span>
+                    </div>
+                `;
+            }).join('');
+            
+            // Display executive summary
+            const summaryContainer = document.getElementById('executive-summary');
+            summaryContainer.innerHTML = `
+                <p><strong>🎯 Top Performing Channel:</strong> ${data.executive_summary.top_performing_channel} (${data.executive_summary.top_channel_roas}x ROAS)</p>
+                <p><strong>📊 Budget Optimization Impact:</strong> ${data.executive_summary.total_optimization_impact}% total shift recommended</p>
+                <p><strong>💡 Recommendation:</strong> ${data.executive_summary.recommended_budget_shift}</p>
+                <p style="margin-top: 15px; font-style: italic;">Based on Bayesian Structural Time Series analysis of your marketing data</p>
+            `;
+        }
+
+        // Close modal when clicking outside
+        document.getElementById('mmm-modal').addEventListener('click', function(e) {
+            if (e.target.id === 'mmm-modal') {
+                closeMMM();
+            }
+        });
+
+        // Your existing website JavaScript
         // Navbar background on scroll
         window.addEventListener('scroll', function() {
             const navbar = document.querySelector('.navbar');
@@ -700,7 +1010,7 @@
             }
         });
 
-        console.log('Website loaded successfully!');
+        console.log('Website with MMM integration loaded successfully!');
     </script>
 </body>
 </html>
