@@ -6,9 +6,11 @@ from sklearn.metrics import mean_absolute_percentage_error
 import io
 import logging
 
+# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Set page config
 st.set_page_config(
     page_title="Marketing Mix Model Analyzer",
     page_icon="📊",
@@ -24,54 +26,87 @@ class MMModel:
         ]
         
     def prepare_data(self, df):
-        if 'date' in df.columns:
-            df['date'] = pd.to_datetime(df['date'])
-            df = df.sort_values('date').reset_index(drop=True)
-        
-        y = df['total_revenue'].values
-        media_data = np.column_stack([df[channel].values for channel in self.media_channels])
-        
-        # Handle missing values
-        media_data = np.nan_to_num(media_data)
-        
-        return y, media_data, df
+        """Prepare and validate data for modeling"""
+        try:
+            if 'date' in df.columns:
+                df['date'] = pd.to_datetime(df['date'], errors='coerce')
+                df = df.sort_values('date').reset_index(drop=True)
+            
+            # Check for required columns
+            missing_columns = [col for col in self.media_channels if col not in df.columns]
+            if missing_columns:
+                raise ValueError(f"Missing required columns: {missing_columns}")
+            
+            y = df['total_revenue'].values
+            media_data = np.column_stack([df[channel].values for channel in self.media_channels])
+            
+            # Handle missing values
+            media_data = np.nan_to_num(media_data)
+            
+            return y, media_data, df
+            
+        except Exception as e:
+            logger.error(f"Data preparation error: {str(e)}")
+            raise
     
     def calculate_roas(self, model, media_data):
-        roas_results = []
-        current_allocation = np.mean(media_data, axis=0)
-        
-        for i, channel in enumerate(self.media_channels):
-            roas = model.coef_[i] * current_allocation[i]
-            roas_results.append({
-                'channel': channel,
-                'roas_mean': max(roas, 0.1),
-                'roas_std': abs(roas * 0.1)
-            })
-        
-        return roas_results, current_allocation
+        """Calculate ROAS for each channel"""
+        try:
+            roas_results = []
+            current_allocation = np.mean(media_data, axis=0)
+            
+            for i, channel in enumerate(self.media_channels):
+                roas = model.coef_[i] * current_allocation[i]
+                roas_results.append({
+                    'channel': channel,
+                    'roas_mean': max(roas, 0.1),  # Minimum ROAS of 0.1
+                    'roas_std': abs(roas * 0.1)
+                })
+            
+            return roas_results, current_allocation
+            
+        except Exception as e:
+            logger.error(f"ROAS calculation error: {str(e)}")
+            raise
     
     def optimize_budget(self, roas_results, current_allocation, total_budget):
-        sorted_channels = sorted(roas_results, key=lambda x: x['roas_mean'], reverse=True)
-        roas_values = [channel['roas_mean'] for channel in sorted_channels]
-        total_roas = sum(roas_values)
-        optimal_weights = [roas / total_roas for roas in roas_values]
-        optimized_allocation = [weight * total_budget for weight in optimal_weights]
-        
-        budget_recommendations = []
-        for i, channel in enumerate(sorted_channels):
-            current = current_allocation[i]
-            optimized = optimized_allocation[i]
-            change_pct = ((optimized - current) / current) * 100 if current > 0 else 100
+        """Optimize budget allocation based on ROAS"""
+        try:
+            sorted_channels = sorted(roas_results, key=lambda x: x['roas_mean'], reverse=True)
+            roas_values = [channel['roas_mean'] for channel in sorted_channels]
+            total_roas = sum(roas_values)
             
-            budget_recommendations.append({
-                'channel': channel['channel'],
-                'current_allocation': round(current, 2),
-                'optimized_allocation': round(optimized, 2),
-                'change_percentage': round(change_pct, 1),
-                'roas': round(channel['roas_mean'], 2)
-            })
-        
-        return budget_recommendations
+            # Avoid division by zero
+            if total_roas == 0:
+                total_roas = 1
+                
+            optimal_weights = [roas / total_roas for roas in roas_values]
+            optimized_allocation = [weight * total_budget for weight in optimal_weights]
+            
+            budget_recommendations = []
+            for i, channel in enumerate(sorted_channels):
+                current = current_allocation[i]
+                optimized = optimized_allocation[i]
+                
+                # Handle division by zero for current allocation
+                if current > 0:
+                    change_pct = ((optimized - current) / current) * 100
+                else:
+                    change_pct = 100 if optimized > 0 else 0
+                
+                budget_recommendations.append({
+                    'channel': channel['channel'],
+                    'current_allocation': round(current, 2),
+                    'optimized_allocation': round(optimized, 2),
+                    'change_percentage': round(change_pct, 1),
+                    'roas': round(channel['roas_mean'], 2)
+                })
+            
+            return budget_recommendations
+            
+        except Exception as e:
+            logger.error(f"Budget optimization error: {str(e)}")
+            raise
 
 def main():
     st.title("📊 Marketing Mix Model Analyzer")
@@ -89,6 +124,7 @@ def main():
             # Show data preview
             with st.expander("Data Preview"):
                 st.dataframe(df.head())
+                st.write(f"Data shape: {df.shape}")
             
             # Initialize model
             mmm_model = MMModel()
@@ -99,13 +135,14 @@ def main():
             
             if missing_columns:
                 st.error(f"❌ Missing required columns: {missing_columns}")
+                st.info("Please ensure your CSV contains all required columns")
                 return
             
             # Process data
             with st.spinner("Analyzing your marketing data..."):
                 y, media_data, processed_df = mmm_model.prepare_data(df)
                 
-                # Use Ridge regression
+                # Use Ridge regression for stability
                 model = Ridge(alpha=1.0)
                 X = media_data
                 model.fit(X, y)
@@ -138,7 +175,8 @@ def main():
             with col3:
                 st.metric("R² Score", f"{model.score(X, y):.3f}")
             with col4:
-                st.metric("MAPE", f"{mean_absolute_percentage_error(y, model.predict(X)):.3f}")
+                mape = mean_absolute_percentage_error(y, model.predict(X))
+                st.metric("MAPE", f"{mape:.3f}")
             
             # ROAS Analysis
             st.header("💰 ROAS Analysis")
@@ -165,8 +203,12 @@ def main():
             
             # Color code the change percentage
             def color_change(val):
-                color = 'green' if val > 0 else 'red' if val < 0 else 'gray'
-                return f'color: {color}'
+                if val > 5:
+                    return 'color: green; font-weight: bold'
+                elif val < -5:
+                    return 'color: red; font-weight: bold'
+                else:
+                    return 'color: gray'
             
             styled_df = budget_df.style.format({
                 'Current ($)': '${:,.2f}',
@@ -190,13 +232,24 @@ def main():
             
             with col2:
                 # Budget Allocation
-                st.subheader("Budget Allocation")
+                st.subheader("Budget Allocation Comparison")
                 allocation_df = budget_df[['Channel', 'Current ($)', 'Recommended ($)']].set_index('Channel')
                 st.bar_chart(allocation_df)
                 
+            # Download recommendations
+            st.header("📥 Export Results")
+            recommendations_csv = budget_df.to_csv(index=False)
+            st.download_button(
+                label="Download Budget Recommendations as CSV",
+                data=recommendations_csv,
+                file_name="budget_recommendations.csv",
+                mime="text/csv"
+            )
+                
         except Exception as e:
             st.error(f"❌ Analysis failed: {str(e)}")
-            logger.error(f"Analysis failed: {str(e)}")
+            logger.error(f"Analysis failed: {str(e)}", exc_info=True)
+            st.info("Please check your data format and try again.")
     
     else:
         st.info("👆 Please upload a CSV file to get started")
@@ -213,6 +266,14 @@ def main():
             'paid_affiliate_net_spend': [200, 250, 225]
         }
         st.dataframe(pd.DataFrame(sample_data))
+        
+        st.info("💡 **Tips for best results:**")
+        st.markdown("""
+        - Ensure all spend columns are in the same currency
+        - Include at least 4-6 weeks of data for reliable analysis
+        - Check for missing values in your data
+        - Ensure revenue and spend figures are accurate
+        """)
 
 if __name__ == "__main__":
     main()
