@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import Ridge
-from sklearn.metrics import mean_absolute_percentage_error
+from sklearn.metrics import mean_absolute_error
 import io
 
 # App title
@@ -28,7 +28,7 @@ else:
     n_samples = 100
     
     sample_data = {
-        'date': pd.date_range('2023-01-01', periods=n_samples, freq='W'),
+        'date': pd.date_range('2023-01-01', periods=n_samples, freq='W').strftime('%Y-%m-%d'),
         'sales': np.random.normal(1000, 200, n_samples).cumsum() + 10000,
         'tv_spend': np.random.uniform(5000, 20000, n_samples),
         'digital_spend': np.random.uniform(3000, 15000, n_samples),
@@ -40,7 +40,7 @@ else:
 
 # Display data
 st.subheader("Data Overview")
-st.dataframe(df.head(), use_container_width=True)
+st.dataframe(df.head())
 
 # Data summary
 st.subheader("Data Summary")
@@ -84,8 +84,9 @@ if len(selected_features) >= 1:
     # Make predictions
     y_pred = model.predict(X_test)
     
-    # Calculate metrics
-    mape = mean_absolute_percentage_error(y_test, y_pred)
+    # Calculate metrics - using MAE instead of MAPE for compatibility
+    mae = mean_absolute_error(y_test, y_pred)
+    mape_custom = np.mean(np.abs((y_test - y_pred) / y_test)) * 100
     rmse = np.sqrt(np.mean((y_test - y_pred) ** 2))
     
     # Display results
@@ -93,7 +94,8 @@ if len(selected_features) >= 1:
     
     with col1:
         st.subheader("Model Performance")
-        st.metric("Mean Absolute Percentage Error", f"{mape:.2%}")
+        st.metric("Mean Absolute Error", f"${mae:,.0f}")
+        st.metric("Mean Absolute Percentage Error", f"{mape_custom:.2f}%")
         st.metric("Root Mean Square Error", f"${rmse:,.0f}")
     
     with col2:
@@ -102,17 +104,20 @@ if len(selected_features) >= 1:
             'Channel': selected_features,
             'Coefficient': model.coef_
         })
-        st.dataframe(coefficients, use_container_width=True)
+        st.dataframe(coefficients)
     
     # Visualization
     st.subheader("Actual vs Predicted Sales")
     results_df = pd.DataFrame({
         'Actual': y_test.values,
-        'Predicted': y_pred,
-        'Date': df['date'].iloc[split_index:].values
+        'Predicted': y_pred
     })
     
-    st.line_chart(results_df.set_index('Date')[['Actual', 'Predicted']])
+    if 'date' in df.columns:
+        results_df['Date'] = df['date'].iloc[split_index:].values
+        st.line_chart(results_df.set_index('Date')[['Actual', 'Predicted']])
+    else:
+        st.line_chart(results_df[['Actual', 'Predicted']])
     
 else:
     st.warning("Please select at least one marketing channel for analysis")
@@ -123,7 +128,10 @@ if len(selected_features) >= 1:
     
     # Calculate contribution percentages
     total_impact = np.sum(np.abs(model.coef_))
-    contributions = (np.abs(model.coef_) / total_impact) * 100
+    if total_impact > 0:
+        contributions = (np.abs(model.coef_) / total_impact) * 100
+    else:
+        contributions = np.zeros(len(model.coef_))
     
     contribution_df = pd.DataFrame({
         'Channel': selected_features,
