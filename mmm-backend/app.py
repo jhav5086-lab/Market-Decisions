@@ -1,4 +1,4 @@
-# mmm_platform.py
+# app.py
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -7,7 +7,7 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import io
 from sklearn.linear_model import Ridge
-from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
+from sklearn.metrics import mean_absolute_error, r2_score
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -50,18 +50,12 @@ class MMMConfig:
         'promo_early_access': ['Early access', 'loyalty only'],
         'promo_points': ['Double points', 'loyalty']
     }
-    DAY_TYPES = [
-        'Avg day', 'Promo day- low', 'Promo day- mid', 'Promo day- high', 
-        'Promo day- super high', 'Sale', 'Early access', 'Influencer', 
-        'Collab', 'FSNM', 'Product launch'
-    ]
     PARAM_RANGES = {
         'half_life': [1, 2, 4, 8, 12],
         'penetration': [30, 50, 70, 90],
         'effective_frequency': [3, 6, 9, 12],
         'hill_alpha': [0.5, 1.0, 1.5, 2.0]
     }
-    HOLDOUT_PERCENT = 0.2
 
 class DataValidator:
     def __init__(self, config): 
@@ -213,11 +207,7 @@ class ParameterEstimator:
         
         st.info(f"🔍 Estimating parameters for {len(available_media_vars)} media variables...")
         
-        progress_bar = st.progress(0)
-        total_combinations = len(available_media_vars) * len(self.config.PARAM_RANGES['half_life']) * len(self.config.PARAM_RANGES['penetration']) * len(self.config.PARAM_RANGES['effective_frequency']) * len(self.config.PARAM_RANGES['hill_alpha'])
-        current_combination = 0
-        
-        for media_idx, media_var in enumerate(available_media_vars):
+        for media_var in available_media_vars:
             st.write(f"  Estimating {media_var}...")
             best_score = float('inf')
             best_channel_params = {}
@@ -248,11 +238,8 @@ class ParameterEstimator:
                                         'hill_alpha': alpha,
                                         'score': best_score
                                     }
-                            except Exception as e:
+                            except Exception:
                                 continue
-                            
-                            current_combination += 1
-                            progress_bar.progress(current_combination / total_combinations)
             
             if best_channel_params:
                 best_params[media_var] = best_channel_params
@@ -260,7 +247,6 @@ class ParameterEstimator:
             else:
                 st.warning(f"  ⚠️ Could not estimate parameters for {media_var}")
         
-        progress_bar.empty()
         return best_params
 
 class TwoStageMMM:
@@ -487,7 +473,6 @@ class MMMPlatform:
     def run_complete_analysis(self, data, frequency='daily'):
         try:
             st.header(f"🎯 MMM Analysis ({frequency.upper()})")
-            st.write("=" * 50)
             
             st.subheader("🚀 Step 1: Data Loading & Validation")
             self.validator.validate_data(data)
@@ -563,7 +548,6 @@ class MMMPlatform:
     
     def _display_results(self, insights, frequency):
         st.header("📊 Final Results")
-        st.write("=" * 50)
         
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -678,7 +662,6 @@ def main():
     Upload your data or use sample data to get started!
     """)
     
-    # Initialize platform in session state
     if 'mmm' not in st.session_state:
         st.session_state.mmm = MMMPlatform()
     
@@ -710,7 +693,6 @@ def main():
                 data = pd.read_csv(uploaded_file)
                 st.sidebar.success(f"✅ Loaded {len(data)} rows, {len(data.columns)} columns")
                 
-                # Show data preview
                 with st.sidebar.expander("📋 Data Preview"):
                     st.dataframe(data.head(), use_container_width=True)
                     
