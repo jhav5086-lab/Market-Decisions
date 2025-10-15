@@ -1,18 +1,13 @@
-# ====================
-# COMPLETE MMM MODELING PLATFORM WITH UPLOAD FUNCTIONALITY
-# ====================
-
+# mmm_platform.py
+import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
-import ipywidgets as widgets
-from IPython.display import display, clear_output
 import io
 from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
-from sklearn.model_selection import TimeSeriesSplit
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -39,7 +34,6 @@ class MMMConfig:
         'day_type': 'Promotion types',
         'descriptor': 'Promotion details'
     }
-    # Realistic promotion patterns based on actual data
     PROMOTION_PATTERNS = {
         'promo_50_pct': ['50% off', '50 off'],
         'promo_30_pct': ['30% off', '30 off', '30% Off Fall Favorites'],
@@ -75,71 +69,57 @@ class DataValidator:
     
     def robust_date_parser(self, date_series):
         """Handle multiple date formats automatically"""
-        # Try pandas auto-detection first with dayfirst for European formats
         try:
             parsed_dates = pd.to_datetime(date_series, dayfirst=False, errors='coerce')
-            # Check if any dates couldn't be parsed
             if parsed_dates.isnull().any():
-                # Try with dayfirst=True for European formats
                 parsed_dates_eu = pd.to_datetime(date_series, dayfirst=True, errors='coerce')
-                # Use whichever method parsed more dates successfully
                 if parsed_dates_eu.isnull().sum() < parsed_dates.isnull().sum():
                     parsed_dates = parsed_dates_eu
-                    print("✅ Used dayfirst=True (European format)")
+                    st.info("✅ Used dayfirst=True (European format)")
                 else:
-                    print("✅ Used dayfirst=False (US format)")
+                    st.info("✅ Used dayfirst=False (US format)")
             else:
-                print("✅ Auto date parsing successful")
+                st.info("✅ Auto date parsing successful")
             return parsed_dates
         except Exception as e:
-            print(f"⚠️  Auto parsing failed: {e}, using coerce")
+            st.warning(f"⚠️ Auto parsing failed: {e}, using coerce")
             return pd.to_datetime(date_series, errors='coerce')
     
     def validate_data(self, data):
-        # Check required columns
         missing_required = [col for col in self.config.REQUIRED_COLUMNS.keys() if col not in data.columns]
         if missing_required:
             raise ValueError(f"Missing required columns: {missing_required}")
         
-        # Check for target variable issues
         if data['total_revenue'].isnull().any():
             raise ValueError("Target variable 'total_revenue' has missing values")
         
-        # Check available media columns
         available_media = [col for col in self.config.OPTIONAL_MEDIA_COLUMNS.keys() if col in data.columns]
         if not available_media:
             raise ValueError("No media variables found in dataset")
         
-        print(f"✅ Data validated! Found {len(available_media)} media variables")
+        st.success(f"✅ Data validated! Found {len(available_media)} media variables")
         return True
     
     def create_features(self, data, frequency='daily'):
         df = data.copy()
         
-        # Robust date parsing
         df['date'] = self.robust_date_parser(df['date'])
         
-        # Check for any failed date parses
         if df['date'].isnull().any():
             null_count = df['date'].isnull().sum()
-            print(f"⚠️  Warning: {null_count} dates could not be parsed and were set to NaT")
+            st.warning(f"⚠️ Warning: {null_count} dates could not be parsed and were set to NaT")
             df = df.dropna(subset=['date']).reset_index(drop=True)
         
-        # Sort by date to ensure time series order
         df = df.sort_values('date').reset_index(drop=True)
         
-        # Handle frequency aggregation
         if frequency == 'monthly':
             original_rows = len(df)
-            # Create month-year identifier
             df['year_month'] = df['date'].dt.to_period('M')
             
-            # Aggregate numeric columns
             numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
             if 'trend' in numeric_cols:
                 numeric_cols.remove('trend')
             
-            # Group by month and aggregate
             df_monthly = df.groupby('year_month').agg({
                 **{col: 'sum' for col in numeric_cols if 'revenue' in col or 'spend' in col or 'sessions' in col},
                 **{col: 'mean' for col in numeric_cols if col not in ['total_revenue', 'paid_media_revenue', 'organic_media_revenue'] and any(x in col for x in ['revenue', 'spend', 'sessions'])},
@@ -150,55 +130,46 @@ class DataValidator:
             }).reset_index(drop=True)
             
             df = df_monthly
-            print(f"✅ Aggregated from {original_rows} days to {len(df)} months")
+            st.info(f"✅ Aggregated from {original_rows} days to {len(df)} months")
         
-        # Create time-based features
         df['trend'] = range(len(df))
         df['day_of_week'] = df['date'].dt.dayofweek
         df['month'] = df['date'].dt.month
         df['quarter'] = df['date'].dt.quarter
         df['year'] = df['date'].dt.year
         
-        # Holiday indicator (handle missing holiday column)
         if 'holiday' in df.columns:
             df['is_holiday'] = (df['holiday'] != 'NH').astype(int)
         else:
             df['is_holiday'] = 0
-            print("⚠️  'holiday' column not found, using default")
+            st.warning("⚠️ 'holiday' column not found, using default")
         
-        # Seasonal features
         df['seasonal_sin'] = np.sin(2 * np.pi * df['day_of_week'] / 7)
         df['seasonal_cos'] = np.cos(2 * np.pi * df['day_of_week'] / 7)
         
-        # Handle categorical variables - day_type dummies
         if 'day_type' in df.columns:
-            # Create dummies for all day types found in data
             day_type_dummies = pd.get_dummies(df['day_type'], prefix='day_type')
-            print(f"✅ Created {len(day_type_dummies.columns)} day_type features")
+            st.info(f"✅ Created {len(day_type_dummies.columns)} day_type features")
         else:
             day_type_dummies = pd.DataFrame(index=df.index)
-            print("⚠️  'day_type' column not found")
+            st.warning("⚠️ 'day_type' column not found")
         
-        # Promotion patterns from descriptor (using realistic patterns)
         promo_dummies = pd.DataFrame(index=df.index)
         if 'descriptor' in df.columns:
             for dummy_name, patterns in self.config.PROMOTION_PATTERNS.items():
                 mask = False
                 for pattern in patterns:
-                    # Handle NaN values in descriptor
                     mask |= df['descriptor'].str.contains(pattern, case=False, na=False)
                 promo_dummies[dummy_name] = mask.astype(int)
             
-            # Count how many promotion features were created
             promo_features_created = promo_dummies.sum().sum()
-            print(f"✅ Created {len(promo_dummies.columns)} promotion features ({promo_features_created} total promotions detected)")
+            st.info(f"✅ Created {len(promo_dummies.columns)} promotion features ({promo_features_created} total promotions detected)")
         else:
-            print("⚠️  'descriptor' column not found, skipping promotion features")
+            st.warning("⚠️ 'descriptor' column not found, skipping promotion features")
         
-        # Combine all features
         result_df = pd.concat([df, day_type_dummies, promo_dummies], axis=1)
         
-        print(f"✅ Features created: {len(result_df.columns)} total columns")
+        st.success(f"✅ Features created: {len(result_df.columns)} total columns")
         return result_df
 
 class MediaTransformer:
@@ -240,10 +211,14 @@ class ParameterEstimator:
         best_params = {}
         available_media_vars = [var for var in media_vars if var in data.columns]
         
-        print(f"🔍 Estimating parameters for {len(available_media_vars)} media variables...")
+        st.info(f"🔍 Estimating parameters for {len(available_media_vars)} media variables...")
         
-        for media_var in available_media_vars:
-            print(f"  Estimating {media_var}...")
+        progress_bar = st.progress(0)
+        total_combinations = len(available_media_vars) * len(self.config.PARAM_RANGES['half_life']) * len(self.config.PARAM_RANGES['penetration']) * len(self.config.PARAM_RANGES['effective_frequency']) * len(self.config.PARAM_RANGES['hill_alpha'])
+        current_combination = 0
+        
+        for media_idx, media_var in enumerate(available_media_vars):
+            st.write(f"  Estimating {media_var}...")
             best_score = float('inf')
             best_channel_params = {}
             
@@ -275,13 +250,17 @@ class ParameterEstimator:
                                     }
                             except Exception as e:
                                 continue
+                            
+                            current_combination += 1
+                            progress_bar.progress(current_combination / total_combinations)
             
             if best_channel_params:
                 best_params[media_var] = best_channel_params
-                print(f"  ✅ {media_var}: HL={best_channel_params['half_life']}, PEN={best_channel_params['penetration']}, EF={best_channel_params['effective_frequency']}")
+                st.success(f"  ✅ {media_var}: HL={best_channel_params['half_life']}, PEN={best_channel_params['penetration']}, EF={best_channel_params['effective_frequency']}")
             else:
-                print(f"  ⚠️  Could not estimate parameters for {media_var}")
+                st.warning(f"  ⚠️ Could not estimate parameters for {media_var}")
         
+        progress_bar.empty()
         return best_params
 
 class TwoStageMMM:
@@ -291,14 +270,11 @@ class TwoStageMMM:
         self.transformer = MediaTransformer(config)
     
     def build_baseline_model(self, data, frequency='daily'):
-        # Use the data that already has features created
         df = data
         
-        # Define baseline features (excluding media variables)
         baseline_features = ['trend', 'day_of_week', 'month', 'quarter', 'year', 'is_holiday', 'seasonal_sin', 'seasonal_cos']
         baseline_features += [col for col in df.columns if col.startswith(('day_type_', 'promo_'))]
         
-        # Remove any media-related features
         baseline_features = [f for f in baseline_features if f in df.columns and 'paid_' not in f and 'organic_' not in f]
         
         X_baseline = df[baseline_features].fillna(0)
@@ -319,14 +295,12 @@ class TwoStageMMM:
     def build_incremental_model(self, data, baseline_predictions, best_params):
         incremental_revenue = data['total_revenue'] - baseline_predictions
         
-        # Find available media variables
         paid_media_vars = [col for col in data.columns if 'paid_' in col and 'net_spend' in col]
         organic_media_vars = [col for col in data.columns if 'organic_' in col and 'sessions' in col]
         media_vars = paid_media_vars + organic_media_vars
         
         media_transformed = self.transformer.transform_media_variables(data, media_vars, best_params).fillna(0)
         
-        # Add competitor variables if available
         comp_vars = [col for col in data.columns if col.startswith('comp_')]
         if comp_vars:
             media_transformed = pd.concat([media_transformed, data[comp_vars]], axis=1)
@@ -353,7 +327,6 @@ class MMMVisualizer:
                    [{"type": "scatter"}, {"type": "heatmap"}]]
         )
         
-        # Data completeness heatmap
         completeness = (1 - data.isnull().mean()).to_frame('Completeness')
         fig.add_trace(
             go.Heatmap(
@@ -367,13 +340,11 @@ class MMMVisualizer:
             row=1, col=1
         )
         
-        # Revenue distribution
         fig.add_trace(
             go.Histogram(x=data['total_revenue'], nbinsx=50, marker_color='#1f77b4', opacity=0.7),
             row=1, col=2
         )
         
-        # Media spend trends (top 3 paid media channels)
         paid_cols = [col for col in data.columns if 'paid_' in col and 'net_spend' in col]
         colors = ['#FF6B6B', '#4ECDC4', '#45B7D1']
         
@@ -389,7 +360,6 @@ class MMMVisualizer:
                 row=2, col=1
             )
         
-        # Channel correlation heatmap
         media_cols = [col for col in data.columns if 'paid_' in col or 'organic_' in col] + ['total_revenue']
         available_media_cols = [col for col in media_cols if col in data.columns]
         
@@ -419,7 +389,6 @@ class MMMVisualizer:
         
         fig = go.Figure()
         
-        # Baseline area
         fig.add_trace(go.Scatter(
             x=dates, y=baseline_results['predictions'],
             fill='tozeroy',
@@ -428,7 +397,6 @@ class MMMVisualizer:
             fillcolor='rgba(128, 128, 128, 0.3)'
         ))
         
-        # Media contributions area
         fig.add_trace(go.Scatter(
             x=dates, y=total_predictions,
             fill='tonexty',
@@ -437,7 +405,6 @@ class MMMVisualizer:
             fillcolor='rgba(78, 205, 196, 0.5)'
         ))
         
-        # Actual revenue line
         fig.add_trace(go.Scatter(
             x=dates, y=data['total_revenue'],
             line=dict(color='black', width=2),
@@ -459,10 +426,9 @@ class MMMVisualizer:
         media_contributions = insights.get('media_contributions', {})
         
         if not media_contributions:
-            print("No media contributions to plot")
+            st.warning("No media contributions to plot")
             return go.Figure()
         
-        # Prepare data for plotting
         channels = []
         contributions = []
         roas_values = []
@@ -472,7 +438,6 @@ class MMMVisualizer:
             contributions.append(stats['contribution'])
             roas_values.append(stats['roas'])
         
-        # Create bar chart
         fig = go.Figure()
         
         fig.add_trace(go.Bar(
@@ -484,7 +449,6 @@ class MMMVisualizer:
             textposition='auto'
         ))
         
-        # Add ROAS as line
         fig.add_trace(go.Scatter(
             x=channels,
             y=roas_values,
@@ -519,42 +483,36 @@ class MMMPlatform:
         self.visualizer = MMMVisualizer()
         self.data = None
         self.results = None
-        print("🎯 MMM Platform Initialized!")
-        
-    def run_complete_analysis(self, data, frequency='daily'):  # FIXED: Added frequency parameter
+    
+    def run_complete_analysis(self, data, frequency='daily'):
         try:
-            print(f"🎯 STARTING COMPLETE MMM ANALYSIS ({frequency.upper()})")
-            print("=" * 50)
+            st.header(f"🎯 MMM Analysis ({frequency.upper()})")
+            st.write("=" * 50)
             
-            # Step 1: Data loading and validation
-            print("🚀 STEP 1: Data Loading & Validation")
+            st.subheader("🚀 Step 1: Data Loading & Validation")
             self.validator.validate_data(data)
             
-            # Create features with specified frequency
             self.data = self.validator.create_features(data, frequency=frequency)
             
-            # Show data quality dashboard
+            st.subheader("📊 Data Quality Dashboard")
             fig = self.visualizer.create_data_quality_dashboard(self.data)
-            fig.show()
+            st.plotly_chart(fig, use_container_width=True)
             
-            # Step 2: Parameter estimation
-            print("🔍 STEP 2: Media Parameter Estimation")
+            st.subheader("🔍 Step 2: Media Parameter Estimation")
             media_vars = list(self.config.OPTIONAL_MEDIA_COLUMNS.keys())
             self.best_params = self.estimator.estimate_parameters(self.data, media_vars, self.data['total_revenue'])
             
-            # Step 3: Model building
-            print("🏗️ STEP 3: Two-Stage Model Building")
+            st.subheader("🏗️ Step 3: Two-Stage Model Building")
             self.baseline_results = self.model_builder.build_baseline_model(self.data, frequency=frequency)
             self.incremental_results = self.model_builder.build_incremental_model(
                 self.data, self.baseline_results['predictions'], self.best_params
             )
             
-            # Show model decomposition
+            st.subheader("📈 Model Decomposition")
             fig2 = self.visualizer.plot_model_decomposition(self.data, self.baseline_results, self.incremental_results, frequency)
-            fig2.show()
+            st.plotly_chart(fig2, use_container_width=True)
             
-            # Step 4: Insights generation
-            print("💡 STEP 4: Generating Business Insights")
+            st.subheader("💡 Step 4: Business Insights")
             total_predictions = self.baseline_results['predictions'] + self.incremental_results['predictions']
             total_r2 = r2_score(self.data['total_revenue'], total_predictions)
             
@@ -571,7 +529,6 @@ class MMMPlatform:
                 }
             }
             
-            # Calculate media contributions
             for media_var in self.incremental_results['media_vars']:
                 if media_var in self.best_params and media_var in self.incremental_results['feature_names']:
                     try:
@@ -589,32 +546,34 @@ class MMMPlatform:
                             'saturation_level': self.best_params[media_var]['effective_frequency']
                         }
                     except Exception as e:
-                        print(f"⚠️  Could not calculate contribution for {media_var}: {e}")
+                        st.warning(f"⚠️ Could not calculate contribution for {media_var}: {e}")
             
-            # Display results
             self._display_results(insights, frequency)
             
-            # Show media contributions chart
+            st.subheader("💰 Media Channel Performance")
             fig3 = self.visualizer.plot_media_contributions(insights)
-            fig3.show()
+            st.plotly_chart(fig3, use_container_width=True)
             
             self.results = insights
             return insights
             
         except Exception as e:
-            print(f"❌ Error: {str(e)}")
+            st.error(f"❌ Error: {str(e)}")
             raise
     
     def _display_results(self, insights, frequency):
-        print("📊 FINAL RESULTS:")
-        print("=" * 50)
-        print(f"Model Frequency: {frequency.upper()}")
-        print(f"Total Model R²: {insights['total_r2']:.3f}")
-        print(f"Baseline R²: {insights['baseline_r2']:.3f}")
-        print(f"Incremental R²: {insights['incremental_r2']:.3f}")
+        st.header("📊 Final Results")
+        st.write("=" * 50)
         
-        print("\n💰 MEDIA CHANNEL PERFORMANCE:")
-        print("-" * 40)
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Model Frequency", frequency.upper())
+        with col2:
+            st.metric("Total R²", f"{insights['total_r2']:.3f}")
+        with col3:
+            st.metric("Baseline R²", f"{insights['baseline_r2']:.3f}")
+        
+        st.subheader("💰 Media Channel Performance")
         
         if insights['media_contributions']:
             sorted_media = sorted(
@@ -624,24 +583,25 @@ class MMMPlatform:
             )
             
             for media_var, stats in sorted_media:
-                print(f"  📈 {media_var}:")
-                print(f"     ROAS: {stats['roas']:.2f}")
-                print(f"     Avg Spend: ${stats['avg_spend']:,.0f}")
-                print(f"     Contribution: ${stats['contribution']:,.0f}")
-                print(f"     Half-life: {stats['half_life']} weeks")
-                print()
+                with st.expander(f"📈 {media_var}"):
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("ROAS", f"{stats['roas']:.2f}")
+                    with col2:
+                        st.metric("Avg Spend", f"${stats['avg_spend']:,.0f}")
+                    with col3:
+                        st.metric("Contribution", f"${stats['contribution']:,.0f}")
+                    with col4:
+                        st.metric("Half-life", f"{stats['half_life']} weeks")
         else:
-            print("  No media contributions calculated")
+            st.warning("No media contributions calculated")
         
-        print("=" * 50)
-        print("🎉 MMM ANALYSIS COMPLETE!")
+        st.success("🎉 MMM ANALYSIS COMPLETE!")
 
 def generate_sample_data(days=100):
-    """Generate realistic sample data with proper promotion patterns"""
     np.random.seed(42)
     dates = pd.date_range('2023-01-01', periods=days, freq='D')
     
-    # Base dataframe with essential columns
     data = pd.DataFrame({
         'date': dates,
         'total_revenue': np.random.normal(50000, 15000, days).clip(1000),
@@ -650,13 +610,10 @@ def generate_sample_data(days=100):
         'descriptor': 'Avg day'
     })
     
-    # Add realistic holidays
     holiday_indices = np.random.choice(days, size=10, replace=False)
     data.loc[holiday_indices, 'holiday'] = 'Holiday'
     
-    # Add realistic promotions based on actual patterns
     promo_data = [
-        # (day_type, descriptor, count)
         ('Promo day- mid', '50% off sitewide', 5),
         ('Promo day- high', '50% off everything', 3),
         ('Promo day- low', '30% off select items', 8),
@@ -682,7 +639,6 @@ def generate_sample_data(days=100):
             data.loc[chosen_indices, 'descriptor'] = descriptor
             promo_indices_used.update(chosen_indices)
     
-    # Paid media variables (net spend)
     paid_media_vars = {
         'paid_search_net_spend': (1000, 300),
         'paid_social_net_spend': (800, 200),
@@ -694,7 +650,6 @@ def generate_sample_data(days=100):
     for var, (mean, std) in paid_media_vars.items():
         data[var] = np.random.normal(mean, std, days).clip(0)
     
-    # Organic media variables (sessions)
     organic_media_vars = {
         'organic_search_sessions': (5000, 1000),
         'organic_social_sessions': (2000, 500),
@@ -706,193 +661,124 @@ def generate_sample_data(days=100):
     for var, (mean, std) in organic_media_vars.items():
         data[var] = np.random.normal(mean, std, days).clip(0)
     
-    print(f"✅ Sample data generated with {len(data)} days")
-    print("📊 Sample variables created:")
-    print("   - date, total_revenue, holiday, day_type, descriptor")
-    print("   - 5 paid media net spend variables")
-    print("   - 5 organic media sessions variables")
-    print("   - Realistic promotion patterns including:")
-    print("     * 50% off, 30% off, 25% off promotions")
-    print("     * GWP (gift with purchase) offers")
-    print("     * Influencer collaborations")
-    print("     * Product launches and restocks")
-    print("     * Tiered promotions and early access")
-    
     return data
 
-# ====================
-# ENHANCED UI WITH FREQUENCY OPTIONS
-# ====================
-def create_mmm_ui():
-    """Create the complete MMM UI with upload functionality and frequency options"""
-    
-    # Initialize platform
-    mmm = MMMPlatform()
-    
-    # Create widgets
-    upload_btn = widgets.FileUpload(
-        description='📁 Upload CSV',
-        multiple=False,
-        accept='.csv',
-        style={'button_color': '#4ECDC4'}
+# Streamlit App
+def main():
+    st.set_page_config(
+        page_title="MMM Modeling Platform",
+        page_icon="🎯",
+        layout="wide",
+        initial_sidebar_state="expanded"
     )
     
-    sample_btn = widgets.Button(
-        description='🎲 Use Sample Data',
-        style={'button_color': '#FF6B6B'}
+    st.title("🎯 MMM Modeling Platform")
+    st.markdown("""
+    Complete Marketing Mix Modeling platform for analyzing media effectiveness and revenue contribution.
+    Upload your data or use sample data to get started!
+    """)
+    
+    # Initialize platform in session state
+    if 'mmm' not in st.session_state:
+        st.session_state.mmm = MMMPlatform()
+    
+    # Sidebar
+    st.sidebar.header("📁 Data Input")
+    
+    data_source = st.sidebar.radio(
+        "Choose data source:",
+        ["Upload CSV", "Use Sample Data"]
     )
     
-    frequency_dropdown = widgets.Dropdown(
-        options=['daily', 'monthly'],
-        value='daily',
-        description='Frequency:',
-        style={'description_width': 'initial'}
+    frequency = st.sidebar.selectbox(
+        "Analysis Frequency:",
+        ["daily", "monthly"],
+        help="Choose between daily granularity or monthly aggregated analysis"
     )
     
-    run_daily_btn = widgets.Button(
-        description='📊 Run Daily Model',
-        style={'button_color': '#45B7D1'},
-        disabled=True
-    )
+    data = None
     
-    run_monthly_btn = widgets.Button(
-        description='📈 Run Monthly Model', 
-        style={'button_color': '#96CEB4'},
-        disabled=True
-    )
-    
-    output = widgets.Output()
-    
-    # Enhanced data requirements display with realistic examples
-    requirements_html = """
-    <div style="background: #f5f5f5; padding: 15px; border-radius: 5px; margin: 10px 0;">
-    <h4>📋 Data Requirements & Examples:</h4>
-    
-    <p><strong>📅 Required Columns:</strong></p>
-    <ul>
-    <li><b>date</b>: Date column (any format: 2023-01-15, 1/15/2023, 15/1/2023)</li>
-    <li><b>total_revenue</b>: Daily revenue in dollars ($12,456)</li>
-    </ul>
-    
-    <p><strong>📊 Optional Media Columns (use what you have):</strong></p>
-    <ul>
-    <li><b>paid_search_net_spend</b>: Paid search spend ($1,234)</li>
-    <li><b>paid_social_net_spend</b>: Paid social media spend ($987)</li>
-    <li><b>paid_display_net_spend</b>: Display advertising spend ($654)</li>
-    <li><b>organic_search_sessions</b>: Organic search traffic (1,234 sessions)</li>
-    <li><b>organic_social_sessions</b>: Organic social traffic (567 sessions)</li>
-    <li><em>...and other paid/organic media variables</em></li>
-    </ul>
-    
-    <p><strong>🎯 Optional Promotion Columns (for better modeling):</strong></p>
-    <ul>
-    <li><b>day_type</b>: Promotion intensity (Avg day, Promo day- low, Promo day- mid, Promo day- high, Sale, etc.)</li>
-    <li><b>descriptor</b>: Promotion details ("50% off sitewide", "Free GWP with $25 purchase", "New product launch")</li>
-    <li><b>holiday</b>: Holiday indicators (NH, Holiday, etc.)</li>
-    </ul>
-    
-    <div style="background: #e8f4f8; padding: 10px; border-radius: 3px; margin: 10px 0;">
-    <strong>💡 Example Data Structure:</strong><br>
-    <small>
-    date | total_revenue | paid_search_net_spend | day_type | descriptor<br>
-    2023-01-01 | 45234 | 1245 | Avg day | Regular day<br>
-    2023-01-02 | 67890 | 1567 | Promo day- mid | 30% off select items<br>
-    2023-01-03 | 89234 | 1987 | Promo day- high | 50% off everything<br>
-    </small>
-    </div>
-    
-    <p><em>Note: Analysis will run with whatever columns are available! More data = better insights.</em></p>
-    </div>
-    """
-    
-    requirements = widgets.HTML(requirements_html)
-    
-    # Status display
-    status = widgets.HTML("<div style='padding: 10px; background: #e8f4fd; border-radius: 5px;'>📝 Ready to upload data</div>")
-    
-    # Event handlers
-    def on_upload_change(change):
-        if upload_btn.value:
-            run_daily_btn.disabled = False
-            run_monthly_btn.disabled = False
-            status.value = "<div style='padding: 10px; background: #e8f4f8; border-radius: 5px;'>✅ CSV file uploaded - Ready to analyze!</div>"
-    
-    def on_sample_click(b):
-        with output:
-            clear_output()
-            print("🎲 Generating realistic sample data...")
-            sample_data = generate_sample_data(100)
-            mmm.data = sample_data
-            run_daily_btn.disabled = False
-            run_monthly_btn.disabled = False
-            status.value = "<div style='padding: 10px; background: #e8f4f8; border-radius: 5px;'>✅ Sample data generated - Ready to analyze!</div>"
-    
-    def run_analysis(frequency):
-        with output:
-            clear_output()
+    if data_source == "Upload CSV":
+        uploaded_file = st.sidebar.file_uploader(
+            "Upload your CSV file",
+            type=['csv'],
+            help="Upload a CSV file with your marketing data"
+        )
+        
+        if uploaded_file is not None:
             try:
-                if upload_btn.value:
-                    # Handle uploaded file
-                    uploaded_file = list(upload_btn.value.values())[0]
-                    content = uploaded_file['content']
-                    data = pd.read_csv(io.BytesIO(content))
-                    print(f"📁 Loaded data: {data.shape[0]} rows, {data.shape[1]} columns")
-                else:
-                    # Use sample data
-                    data = mmm.data
-                    print(f"🎲 Using sample data: {data.shape[0]} rows, {data.shape[1]} columns")
+                data = pd.read_csv(uploaded_file)
+                st.sidebar.success(f"✅ Loaded {len(data)} rows, {len(data.columns)} columns")
                 
-                # Run analysis
-                status.value = f"<div style='padding: 10px; background: #fff3cd; border-radius: 5px;'>🔄 Running {frequency} analysis... This may take a few minutes</div>"
-                
-                results = mmm.run_complete_analysis(data, frequency=frequency)  # FIXED: Now passes frequency parameter
-                
-                # Show success status
-                status.value = f"""
-                <div style='padding: 10px; background: #d4edda; border-radius: 5px;'>
-                ✅ {frequency.capitalize()} Analysis Complete! Model R²: {results['total_r2']:.3f}
-                </div>
-                """
-                
+                # Show data preview
+                with st.sidebar.expander("📋 Data Preview"):
+                    st.dataframe(data.head(), use_container_width=True)
+                    
             except Exception as e:
-                status.value = f"""
-                <div style='padding: 10px; background: #f8d7da; border-radius: 5px;'>
-                ❌ Error in {frequency} analysis: {str(e)}
-                </div>
-                """
-                print(f"Error details: {str(e)}")
+                st.sidebar.error(f"❌ Error loading file: {e}")
     
-    def on_run_daily_click(b):
-        run_analysis('daily')
+    else:  # Sample Data
+        if st.sidebar.button("Generate Sample Data"):
+            data = generate_sample_data(100)
+            st.session_state.sample_data = data
+            st.sidebar.success("✅ Sample data generated!")
+        
+        if 'sample_data' in st.session_state:
+            data = st.session_state.sample_data
+            with st.sidebar.expander("📋 Sample Data Preview"):
+                st.dataframe(data.head(), use_container_width=True)
     
-    def on_run_monthly_click(b):
-        run_analysis('monthly')
+    # Main content
+    if data is not None:
+        st.header("🚀 Ready to Analyze!")
+        st.write(f"**Data Shape:** {data.shape[0]} rows × {data.shape[1]} columns")
+        st.write(f"**Selected Frequency:** {frequency.upper()}")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("📊 Run Daily Analysis", type="primary", use_container_width=True):
+                with st.spinner("Running daily analysis... This may take a few minutes"):
+                    st.session_state.results = st.session_state.mmm.run_complete_analysis(data, frequency='daily')
+        
+        with col2:
+            if st.button("📈 Run Monthly Analysis", type="secondary", use_container_width=True):
+                with st.spinner("Running monthly analysis... This may take a few minutes"):
+                    st.session_state.results = st.session_state.mmm.run_complete_analysis(data, frequency='monthly')
     
-    # Attach event handlers
-    upload_btn.observe(on_upload_change, names='value')
-    sample_btn.on_click(on_sample_click)
-    run_daily_btn.on_click(on_run_daily_click)
-    run_monthly_btn.on_click(on_run_monthly_click)
-    
-    # Create layout
-    header = widgets.HTML("<h2>🎯 MMM Modeling Platform</h2>")
-    upload_row = widgets.HBox([upload_btn, sample_btn])
-    frequency_row = widgets.HBox([frequency_dropdown])
-    run_row = widgets.HBox([run_daily_btn, run_monthly_btn])
-    
-    # Display UI
-    display(header)
-    display(requirements)
-    display(upload_row)
-    display(frequency_row) 
-    display(run_row)
-    display(status)
-    display(output)
-    
-    return mmm
+    else:
+        st.info("👆 Please upload your data or generate sample data to get started!")
+        
+        # Data requirements
+        with st.expander("📋 Data Requirements & Examples", expanded=True):
+            st.markdown("""
+            ### 📅 Required Columns:
+            - **date**: Date column (any format: 2023-01-15, 1/15/2023, 15/1/2023)
+            - **total_revenue**: Daily revenue in dollars ($12,456)
+            
+            ### 📊 Optional Media Columns (use what you have):
+            - **paid_search_net_spend**: Paid search spend ($1,234)
+            - **paid_social_net_spend**: Paid social media spend ($987)
+            - **paid_display_net_spend**: Display advertising spend ($654)
+            - **organic_search_sessions**: Organic search traffic (1,234 sessions)
+            - **organic_social_sessions**: Organic social traffic (567 sessions)
+            - *...and other paid/organic media variables*
+            
+            ### 🎯 Optional Promotion Columns (for better modeling):
+            - **day_type**: Promotion intensity (Avg day, Promo day- low, Promo day- mid, Promo day- high, Sale, etc.)
+            - **descriptor**: Promotion details ("50% off sitewide", "Free GWP with $25 purchase", "New product launch")
+            - **holiday**: Holiday indicators (NH, Holiday, etc.)
+            
+            ### 💡 Example Data Structure:
+            ```
+            date | total_revenue | paid_search_net_spend | day_type | descriptor
+            2023-01-01 | 45234 | 1245 | Avg day | Regular day
+            2023-01-02 | 67890 | 1567 | Promo day- mid | 30% off select items
+            2023-01-03 | 89234 | 1987 | Promo day- high | 50% off everything
+            ```
+            
+            *Note: Analysis will run with whatever columns are available! More data = better insights.*
+            """)
 
-# ====================
-# LAUNCH THE UI
-# ====================
-print("🚀 Launching Enhanced MMM Platform with Realistic Promotion Patterns...")
-mmm_ui = create_mmm_ui()
+if __name__ == "__main__":
+    main()
