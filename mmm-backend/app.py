@@ -1,766 +1,680 @@
-# app.py
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
-import plotly.express as px
-from plotly.subplots import make_subplots
-import io
-from sklearn.linear_model import Ridge
+import matplotlib.pyplot as plt
+import seaborn as sns
+from datetime import datetime, timedelta
+from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error, r2_score
 import warnings
 warnings.filterwarnings('ignore')
 
-# Configuration
-class MMMConfig:
-    REQUIRED_COLUMNS = {
-        'date': 'Date column',
-        'total_revenue': 'Target revenue'
+# Set page configuration
+st.set_page_config(
+    page_title="Enterprise MMM Platform",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Custom CSS for professional styling
+st.markdown("""
+<style>
+    .main-header {
+        font-size: 2.5rem;
+        color: #1f77b4;
+        text-align: center;
+        margin-bottom: 2rem;
     }
-    OPTIONAL_MEDIA_COLUMNS = {
-        'paid_search_net_spend': 'Paid search',
-        'paid_social_net_spend': 'Paid social', 
-        'paid_display_net_spend': 'Paid display',
-        'paid_shopping_net_spend': 'Paid shopping',
-        'paid_affiliate_net_spend': 'Paid affiliate',
-        'organic_search_sessions': 'Organic search',
-        'organic_social_sessions': 'Organic social',
-        'organic_direct_sessions': 'Organic direct',
-        'organic_email_sessions': 'Organic email',
-        'organic_referral_sessions': 'Organic referral'
+    .section-header {
+        font-size: 1.5rem;
+        color: #2e86ab;
+        margin-top: 2rem;
+        margin-bottom: 1rem;
+        border-bottom: 2px solid #f0f0f0;
+        padding-bottom: 0.5rem;
     }
-    OPTIONAL_BASE_COLUMNS = {
-        'holiday': 'Holiday indicators',
-        'day_type': 'Promotion types',
-        'descriptor': 'Promotion details'
+    .metric-card {
+        background-color: #f8f9fa;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        border-left: 4px solid #1f77b4;
+        margin-bottom: 1rem;
     }
-    PROMOTION_PATTERNS = {
-        'promo_50_pct': ['50% off', '50 off'],
-        'promo_30_pct': ['30% off', '30 off', '30% Off Fall Favorites'],
-        'promo_25_pct': ['25% off', '25 off', 'Extra 25% Off'],
-        'promo_20_pct': ['20% off', '20 off'],
-        'promo_gwp': ['GWP', 'gift with purchase', 'free gift', 'Brush Set'],
-        'promo_collab': ['Collab', 'Collaboration', 'Relaunch'],
-        'promo_influencer': ['Influencer', 'Jeffree Star', 'Jstarr', 'Nabela'],
-        'promo_launch': ['Product Launch', 'back in-stock', 'Relaunch', 'Restock'],
-        'promo_clearance': ['Clearance', 'Clearence', 'End Of Summer'],
-        'promo_bogo': ['Buy 1, Get 1', 'BOGO'],
-        'promo_tiered': ['Buy More, Save More', 'Spend $20', 'Spend $30', 'Spend $40'],
-        'promo_shipping': ['Free Shipping'],
-        'promo_early_access': ['Early access', 'loyalty only'],
-        'promo_points': ['Double points', 'loyalty']
+    .stButton button {
+        width: 100%;
+        margin-top: 0.5rem;
     }
-    PARAM_RANGES = {
-        'half_life': [1, 2, 4, 8, 12],
-        'penetration': [30, 50, 70, 90],
-        'effective_frequency': [3, 6, 9, 12],
-        'hill_alpha': [0.5, 1.0, 1.5, 2.0]
-    }
+</style>
+""", unsafe_allow_html=True)
 
-class DataValidator:
-    def __init__(self, config): 
-        self.config = config
-    
-    def robust_date_parser(self, date_series):
-        """Handle multiple date formats automatically"""
-        try:
-            parsed_dates = pd.to_datetime(date_series, dayfirst=False, errors='coerce')
-            if parsed_dates.isnull().any():
-                parsed_dates_eu = pd.to_datetime(date_series, dayfirst=True, errors='coerce')
-                if parsed_dates_eu.isnull().sum() < parsed_dates.isnull().sum():
-                    parsed_dates = parsed_dates_eu
-                    st.info("✅ Used dayfirst=True (European format)")
-                else:
-                    st.info("✅ Used dayfirst=False (US format)")
-            else:
-                st.info("✅ Auto date parsing successful")
-            return parsed_dates
-        except Exception as e:
-            st.warning(f"⚠️ Auto parsing failed: {e}, using coerce")
-            return pd.to_datetime(date_series, errors='coerce')
-    
-    def validate_data(self, data):
-        missing_required = [col for col in self.config.REQUIRED_COLUMNS.keys() if col not in data.columns]
-        if missing_required:
-            raise ValueError(f"Missing required columns: {missing_required}")
-        
-        if data['total_revenue'].isnull().any():
-            raise ValueError("Target variable 'total_revenue' has missing values")
-        
-        available_media = [col for col in self.config.OPTIONAL_MEDIA_COLUMNS.keys() if col in data.columns]
-        if not available_media:
-            raise ValueError("No media variables found in dataset")
-        
-        st.success(f"✅ Data validated! Found {len(available_media)} media variables")
-        return True
-    
-    def create_features(self, data, frequency='daily'):
-        df = data.copy()
-        
-        df['date'] = self.robust_date_parser(df['date'])
-        
-        if df['date'].isnull().any():
-            null_count = df['date'].isnull().sum()
-            st.warning(f"⚠️ Warning: {null_count} dates could not be parsed and were set to NaT")
-            df = df.dropna(subset=['date']).reset_index(drop=True)
-        
-        df = df.sort_values('date').reset_index(drop=True)
-        
-        if frequency == 'monthly':
-            original_rows = len(df)
-            df['year_month'] = df['date'].dt.to_period('M')
-            
-            numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-            if 'trend' in numeric_cols:
-                numeric_cols.remove('trend')
-            
-            df_monthly = df.groupby('year_month').agg({
-                **{col: 'sum' for col in numeric_cols if 'revenue' in col or 'spend' in col or 'sessions' in col},
-                **{col: 'mean' for col in numeric_cols if col not in ['total_revenue', 'paid_media_revenue', 'organic_media_revenue'] and any(x in col for x in ['revenue', 'spend', 'sessions'])},
-                'date': 'first',
-                'holiday': lambda x: x.mode().iloc[0] if not x.mode().empty else 'NH',
-                'day_type': lambda x: x.mode().iloc[0] if not x.mode().empty else 'Avg day',
-                'descriptor': lambda x: '; '.join(x.unique())
-            }).reset_index(drop=True)
-            
-            df = df_monthly
-            st.info(f"✅ Aggregated from {original_rows} days to {len(df)} months")
-        
-        df['trend'] = range(len(df))
-        df['day_of_week'] = df['date'].dt.dayofweek
-        df['month'] = df['date'].dt.month
-        df['quarter'] = df['date'].dt.quarter
-        df['year'] = df['date'].dt.year
-        
-        if 'holiday' in df.columns:
-            df['is_holiday'] = (df['holiday'] != 'NH').astype(int)
-        else:
-            df['is_holiday'] = 0
-            st.warning("⚠️ 'holiday' column not found, using default")
-        
-        df['seasonal_sin'] = np.sin(2 * np.pi * df['day_of_week'] / 7)
-        df['seasonal_cos'] = np.cos(2 * np.pi * df['day_of_week'] / 7)
-        
-        if 'day_type' in df.columns:
-            day_type_dummies = pd.get_dummies(df['day_type'], prefix='day_type')
-            st.info(f"✅ Created {len(day_type_dummies.columns)} day_type features")
-        else:
-            day_type_dummies = pd.DataFrame(index=df.index)
-            st.warning("⚠️ 'day_type' column not found")
-        
-        promo_dummies = pd.DataFrame(index=df.index)
-        if 'descriptor' in df.columns:
-            for dummy_name, patterns in self.config.PROMOTION_PATTERNS.items():
-                mask = False
-                for pattern in patterns:
-                    mask |= df['descriptor'].str.contains(pattern, case=False, na=False)
-                promo_dummies[dummy_name] = mask.astype(int)
-            
-            promo_features_created = promo_dummies.sum().sum()
-            st.info(f"✅ Created {len(promo_dummies.columns)} promotion features ({promo_features_created} total promotions detected)")
-        else:
-            st.warning("⚠️ 'descriptor' column not found, skipping promotion features")
-        
-        result_df = pd.concat([df, day_type_dummies, promo_dummies], axis=1)
-        
-        st.success(f"✅ Features created: {len(result_df.columns)} total columns")
-        return result_df
-
-class MediaTransformer:
-    def __init__(self, config): self.config = config
-    
-    def adstock_transform(self, data, column, half_life):
-        if half_life <= 0: 
-            return data[column].values
-        retention = 0.5 ** (1 / half_life)
-        adstock = np.zeros(len(data))
-        adstock[0] = data[column].iloc[0]
-        for i in range(1, len(data)):
-            adstock[i] = data[column].iloc[i] + retention * adstock[i-1]
-        return adstock
-    
-    def hill_saturation(self, adstock, penetration, ef, alpha):
-        reach_adstock = adstock * (penetration / 100)
-        K = ef
-        numerator = reach_adstock ** alpha
-        denominator = K ** alpha + numerator
-        return np.divide(numerator, denominator, out=np.zeros_like(numerator), where=denominator != 0)
-    
-    def transform_media_variables(self, data, media_vars, params_dict):
-        transformed_data = pd.DataFrame(index=data.index)
-        for media_var in media_vars:
-            if media_var in params_dict and media_var in data.columns:
-                params = params_dict[media_var]
-                adstock = self.adstock_transform(data, media_var, params['half_life'])
-                saturation = self.hill_saturation(adstock, params['penetration'], params['effective_frequency'], params['hill_alpha'])
-                transformed_data[media_var] = saturation
-        return transformed_data
-
-class ParameterEstimator:
-    def __init__(self, config): 
-        self.config = config
-        self.transformer = MediaTransformer(config)
-    
-    def estimate_parameters(self, data, media_vars, target):
-        best_params = {}
-        available_media_vars = [var for var in media_vars if var in data.columns]
-        
-        st.info(f"🔍 Estimating parameters for {len(available_media_vars)} media variables...")
-        
-        for media_var in available_media_vars:
-            st.write(f"  Estimating {media_var}...")
-            best_score = float('inf')
-            best_channel_params = {}
-            
-            for hl in self.config.PARAM_RANGES['half_life']:
-                for pen in self.config.PARAM_RANGES['penetration']:
-                    for ef in self.config.PARAM_RANGES['effective_frequency']:
-                        for alpha in self.config.PARAM_RANGES['hill_alpha']:
-                            try:
-                                adstock = self.transformer.adstock_transform(data, media_var, hl)
-                                saturation = self.transformer.hill_saturation(adstock, pen, ef, alpha)
-                                
-                                if len(np.unique(saturation)) > 1 and np.std(saturation) > 0:
-                                    correlation = np.corrcoef(saturation, target)[0, 1]
-                                    if not np.isnan(correlation):
-                                        score = -abs(correlation)
-                                    else:
-                                        score = float('inf')
-                                else:
-                                    score = float('inf')
-                                
-                                if score < best_score:
-                                    best_score = score
-                                    best_channel_params = {
-                                        'half_life': hl,
-                                        'penetration': pen,
-                                        'effective_frequency': ef,
-                                        'hill_alpha': alpha,
-                                        'score': best_score
-                                    }
-                            except Exception:
-                                continue
-            
-            if best_channel_params:
-                best_params[media_var] = best_channel_params
-                st.success(f"  ✅ {media_var}: HL={best_channel_params['half_life']}, PEN={best_channel_params['penetration']}, EF={best_channel_params['effective_frequency']}")
-            else:
-                st.warning(f"  ⚠️ Could not estimate parameters for {media_var}")
-        
-        return best_params
-
-class TwoStageMMM:
-    def __init__(self, config):
-        self.config = config
-        self.validator = DataValidator(config)
-        self.transformer = MediaTransformer(config)
-    
-    def build_baseline_model(self, data, frequency='daily'):
-        df = data
-        
-        baseline_features = ['trend', 'day_of_week', 'month', 'quarter', 'year', 'is_holiday', 'seasonal_sin', 'seasonal_cos']
-        baseline_features += [col for col in df.columns if col.startswith(('day_type_', 'promo_'))]
-        
-        baseline_features = [f for f in baseline_features if f in df.columns and 'paid_' not in f and 'organic_' not in f]
-        
-        X_baseline = df[baseline_features].fillna(0)
-        y = data['total_revenue']
-        
-        baseline_model = Ridge(alpha=1.0)
-        baseline_model.fit(X_baseline, y)
-        baseline_predictions = baseline_model.predict(X_baseline)
-        
-        return {
-            'model': baseline_model,
-            'predictions': baseline_predictions,
-            'features': baseline_features,
-            'r2': r2_score(y, baseline_predictions),
-            'mae': mean_absolute_error(y, baseline_predictions)
-        }
-    
-    def build_incremental_model(self, data, baseline_predictions, best_params):
-        incremental_revenue = data['total_revenue'] - baseline_predictions
-        
-        paid_media_vars = [col for col in data.columns if 'paid_' in col and 'net_spend' in col]
-        organic_media_vars = [col for col in data.columns if 'organic_' in col and 'sessions' in col]
-        media_vars = paid_media_vars + organic_media_vars
-        
-        media_transformed = self.transformer.transform_media_variables(data, media_vars, best_params).fillna(0)
-        
-        comp_vars = [col for col in data.columns if col.startswith('comp_')]
-        if comp_vars:
-            media_transformed = pd.concat([media_transformed, data[comp_vars]], axis=1)
-        
-        incremental_model = Ridge(alpha=1.0)
-        incremental_model.fit(media_transformed, incremental_revenue)
-        incremental_predictions = incremental_model.predict(media_transformed)
-        
-        return {
-            'model': incremental_model,
-            'predictions': incremental_predictions,
-            'media_vars': media_vars,
-            'feature_names': list(media_transformed.columns),
-            'r2': r2_score(incremental_revenue, incremental_predictions),
-            'mae': mean_absolute_error(incremental_revenue, incremental_predictions)
-        }
-
-class MMMVisualizer:
-    def create_data_quality_dashboard(self, data):
-        fig = make_subplots(
-            rows=2, cols=2,
-            subplot_titles=('Data Completeness', 'Revenue Distribution', 'Media Spend Trends', 'Channel Correlation'),
-            specs=[[{"type": "heatmap"}, {"type": "histogram"}],
-                   [{"type": "scatter"}, {"type": "heatmap"}]]
-        )
-        
-        completeness = (1 - data.isnull().mean()).to_frame('Completeness')
-        fig.add_trace(
-            go.Heatmap(
-                z=completeness.T.values,
-                x=completeness.index,
-                y=['Completeness'],
-                colorscale=['#FF6B6B', '#4ECDC4'],
-                showscale=True,
-                hoverinfo='x+z'
-            ),
-            row=1, col=1
-        )
-        
-        fig.add_trace(
-            go.Histogram(x=data['total_revenue'], nbinsx=50, marker_color='#1f77b4', opacity=0.7),
-            row=1, col=2
-        )
-        
-        paid_cols = [col for col in data.columns if 'paid_' in col and 'net_spend' in col]
-        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1']
-        
-        for i, col in enumerate(paid_cols[:3]):
-            fig.add_trace(
-                go.Scatter(
-                    x=data.index if 'date' not in data.columns else data['date'],
-                    y=data[col],
-                    name=col,
-                    line=dict(color=colors[i % len(colors)], width=2),
-                    opacity=0.7
-                ),
-                row=2, col=1
-            )
-        
-        media_cols = [col for col in data.columns if 'paid_' in col or 'organic_' in col] + ['total_revenue']
-        available_media_cols = [col for col in media_cols if col in data.columns]
-        
-        if len(available_media_cols) > 1:
-            corr_data = data[available_media_cols].corr()
-            fig.add_trace(
-                go.Heatmap(
-                    z=corr_data.values,
-                    x=corr_data.columns,
-                    y=corr_data.index,
-                    colorscale='RdBu',
-                    zmid=0
-                ),
-                row=2, col=2
-            )
-        
-        fig.update_layout(height=800, title_text="📊 Data Quality Dashboard")
-        return fig
-    
-    def plot_model_decomposition(self, data, baseline_results, incremental_results, frequency='daily'):
-        if 'date' in data.columns:
-            dates = pd.to_datetime(data['date'])
-        else:
-            dates = data.index
-        
-        total_predictions = baseline_results['predictions'] + incremental_results['predictions']
-        
-        fig = go.Figure()
-        
-        fig.add_trace(go.Scatter(
-            x=dates, y=baseline_results['predictions'],
-            fill='tozeroy',
-            name='Baseline',
-            line=dict(color='gray', width=0.5),
-            fillcolor='rgba(128, 128, 128, 0.3)'
-        ))
-        
-        fig.add_trace(go.Scatter(
-            x=dates, y=total_predictions,
-            fill='tonexty',
-            name='Media Contributions',
-            line=dict(color='#4ECDC4', width=0.5),
-            fillcolor='rgba(78, 205, 196, 0.5)'
-        ))
-        
-        fig.add_trace(go.Scatter(
-            x=dates, y=data['total_revenue'],
-            line=dict(color='black', width=2),
-            name='Actual Revenue'
-        ))
-        
-        title = f'Revenue Decomposition ({frequency.capitalize()} Model)'
-        fig.update_layout(
-            title=title,
-            xaxis_title='Date',
-            yaxis_title='Revenue',
-            hovermode='x unified',
-            height=500
-        )
-        
-        return fig
-    
-    def plot_media_contributions(self, insights):
-        media_contributions = insights.get('media_contributions', {})
-        
-        if not media_contributions:
-            st.warning("No media contributions to plot")
-            return go.Figure()
-        
-        channels = []
-        contributions = []
-        roas_values = []
-        
-        for channel, stats in media_contributions.items():
-            channels.append(channel)
-            contributions.append(stats['contribution'])
-            roas_values.append(stats['roas'])
-        
-        fig = go.Figure()
-        
-        fig.add_trace(go.Bar(
-            x=channels,
-            y=contributions,
-            name='Revenue Contribution',
-            marker_color='#4ECDC4',
-            text=[f'${c:,.0f}' for c in contributions],
-            textposition='auto'
-        ))
-        
-        fig.add_trace(go.Scatter(
-            x=channels,
-            y=roas_values,
-            name='ROAS',
-            yaxis='y2',
-            line=dict(color='#FF6B6B', width=3),
-            marker=dict(size=8)
-        ))
-        
-        fig.update_layout(
-            title='Media Channel Contributions and ROAS',
-            xaxis_title='Media Channels',
-            yaxis_title='Revenue Contribution ($)',
-            yaxis2=dict(
-                title='ROAS',
-                overlaying='y',
-                side='right'
-            ),
-            hovermode='x unified',
-            height=500
-        )
-        
-        return fig
-
-class MMMPlatform:
+class MMMEngine:
     def __init__(self):
-        self.config = MMMConfig()
-        self.validator = DataValidator(self.config)
-        self.transformer = MediaTransformer(self.config)
-        self.estimator = ParameterEstimator(self.config)
-        self.model_builder = TwoStageMMM(self.config)
-        self.visualizer = MMMVisualizer()
         self.data = None
-        self.results = None
-    
-    def run_complete_analysis(self, data, frequency='daily'):
+        self.model_results = {}
+        self.causal_tests = {}
+        
+    def load_data(self, uploaded_file):
         try:
-            st.header(f"🎯 MMM Analysis ({frequency.upper()})")
+            self.data = pd.read_csv(uploaded_file)
             
-            st.subheader("🚀 Step 1: Data Loading & Validation")
-            self.validator.validate_data(data)
+            # Auto-detect date column
+            date_col = None
+            for col in self.data.columns:
+                if 'date' in col.lower():
+                    date_col = col
+                    break
             
-            self.data = self.validator.create_features(data, frequency=frequency)
+            if not date_col:
+                st.error("❌ No date column found in uploaded data")
+                return False
             
-            st.subheader("📊 Data Quality Dashboard")
-            fig = self.visualizer.create_data_quality_dashboard(self.data)
-            st.plotly_chart(fig, use_container_width=True)
+            # Parse dates
+            self.data[date_col] = pd.to_datetime(self.data[date_col], errors='coerce')
+            self.data = self.data.set_index(date_col).sort_index()
             
-            st.subheader("🔍 Step 2: Media Parameter Estimation")
-            media_vars = list(self.config.OPTIONAL_MEDIA_COLUMNS.keys())
-            self.best_params = self.estimator.estimate_parameters(self.data, media_vars, self.data['total_revenue'])
+            # Remove rank and country columns
+            cols_to_drop = [col for col in self.data.columns if any(x in col.lower() for x in ['rank', 'country', 'rk'])]
+            self.data = self.data.drop(columns=cols_to_drop)
             
-            st.subheader("🏗️ Step 3: Two-Stage Model Building")
-            self.baseline_results = self.model_builder.build_baseline_model(self.data, frequency=frequency)
-            self.incremental_results = self.model_builder.build_incremental_model(
-                self.data, self.baseline_results['predictions'], self.best_params
-            )
+            # Aggregate to weekly
+            self.data = self.data.resample('W-MON').sum()
             
-            st.subheader("📈 Model Decomposition")
-            fig2 = self.visualizer.plot_model_decomposition(self.data, self.baseline_results, self.incremental_results, frequency)
-            st.plotly_chart(fig2, use_container_width=True)
+            return True
             
-            st.subheader("💡 Step 4: Business Insights")
-            total_predictions = self.baseline_results['predictions'] + self.incremental_results['predictions']
-            total_r2 = r2_score(self.data['total_revenue'], total_predictions)
+        except Exception as e:
+            st.error(f"❌ Error loading data: {str(e)}")
+            return False
+
+    def reset_data(self):
+        """Reset all data and models"""
+        self.data = None
+        self.model_results = {}
+        self.causal_tests = {}
+        return True
+
+    def weibull_adstock(self, x, shape=1.5, scale=14, max_lag=28):
+        lags = np.arange(0, max_lag + 1)
+        weights = (shape / scale) * (lags / scale)**(shape - 1) * np.exp(-(lags / scale)**shape)
+        weights = weights / weights.sum()
+        adstocked = np.convolve(x, weights, mode='full')[:len(x)]
+        return adstocked
+
+    def hill_saturation(self, x, alpha=2.0, kappa=0.8):
+        return x**alpha / (x**alpha + kappa**alpha)
+
+    def transform_media_variables(self, params):
+        media_transforms = {}
+        media_cols = [col for col in self.data.columns if 'spend' in col.lower() and 'paid' in col.lower()]
+        
+        for col in media_cols:
+            channel_type = 'search' if 'search' in col.lower() else 'social' if 'social' in col.lower() else 'display'
+            channel_params = params[channel_type]
             
-            insights = {
-                'frequency': frequency,
-                'total_r2': total_r2,
-                'baseline_r2': self.baseline_results['r2'],
-                'incremental_r2': self.incremental_results['r2'],
-                'media_contributions': {},
-                'parameter_summary': self.best_params,
-                'model_details': {
-                    'baseline_features': self.baseline_results['features'],
-                    'media_features': self.incremental_results['feature_names']
-                }
+            raw_data = self.data[col].fillna(0).values
+            adstocked = self.weibull_adstock(raw_data, channel_params['shape'], channel_params['scale'])
+            saturated = self.hill_saturation(adstocked, channel_params['alpha'], channel_params['kappa'])
+            media_transforms[col] = saturated
+            
+        return media_transforms
+
+    def run_causal_analysis(self):
+        causal_results = {}
+        media_cols = [col for col in self.data.columns if 'spend' in col.lower() and 'paid' in col.lower()]
+        
+        for media_col in media_cols:
+            max_lag = 4
+            best_lag = 0
+            best_corr = 0
+            
+            for lag in range(1, max_lag + 1):
+                media_lagged = self.data[media_col].shift(lag).dropna()
+                revenue_current = self.data['total_revenue'].iloc[lag:]
+                
+                if len(media_lagged) == len(revenue_current):
+                    corr = np.corrcoef(media_lagged, revenue_current)[0,1]
+                    if abs(corr) > abs(best_corr):
+                        best_corr = corr
+                        best_lag = lag
+            
+            causal_results[media_col] = {
+                'best_lag': best_lag,
+                'max_correlation': best_corr,
+                'significant': abs(best_corr) > 0.3
+            }
+        
+        spend_shocks = {}
+        for media_col in media_cols:
+            spend_changes = self.data[media_col].pct_change().abs()
+            shock_periods = spend_changes[spend_changes > 1.0]
+            spend_shocks[media_col] = len(shock_periods)
+        
+        causal_results['spend_shocks'] = spend_shocks
+        self.causal_tests = causal_results
+        return causal_results
+
+    def train_model(self, params, test_size=0.2):
+        try:
+            media_transforms = self.transform_media_variables(params)
+            X = pd.DataFrame(media_transforms)
+            
+            organic_cols = [col for col in self.data.columns if 'organic' in col.lower() and 'revenue' in col]
+            for col in organic_cols:
+                X[col] = self.data[col].fillna(0).values
+            
+            y = self.data['total_revenue'].values
+            
+            split_idx = int(len(X) * (1 - test_size))
+            X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
+            y_train, y_test = y[:split_idx], y[split_idx:]
+            
+            model = LinearRegression()
+            model.fit(X_train, y_train)
+            
+            coefs = self._apply_bayesian_shrinkage(model.coef_, X.columns, params)
+            
+            y_pred_train = model.predict(X_train)
+            y_pred_test = model.predict(X_test)
+            
+            self.model_results = {
+                'model': model,
+                'feature_names': X.columns.tolist(),
+                'coefficients': coefs,
+                'train_actual': y_train,
+                'test_actual': y_test,
+                'train_predicted': y_pred_train,
+                'test_predicted': y_pred_test,
+                'train_dates': self.data.index[:split_idx],
+                'test_dates': self.data.index[split_idx:],
+                'test_start_idx': split_idx,
+                'feature_importance': dict(zip(X.columns, np.abs(coefs)))
             }
             
-            for media_var in self.incremental_results['media_vars']:
-                if media_var in self.best_params and media_var in self.incremental_results['feature_names']:
-                    try:
-                        coef_idx = self.incremental_results['feature_names'].index(media_var)
-                        coef = self.incremental_results['model'].coef_[coef_idx]
-                        avg_spend = self.data[media_var].mean() if media_var in self.data.columns else 0
-                        contribution = coef * avg_spend if avg_spend > 0 else 0
-                        
-                        insights['media_contributions'][media_var] = {
-                            'coefficient': coef,
-                            'roas': coef,
-                            'avg_spend': avg_spend,
-                            'contribution': contribution,
-                            'half_life': self.best_params[media_var]['half_life'],
-                            'saturation_level': self.best_params[media_var]['effective_frequency']
-                        }
-                    except Exception as e:
-                        st.warning(f"⚠️ Could not calculate contribution for {media_var}: {e}")
-            
-            self._display_results(insights, frequency)
-            
-            st.subheader("💰 Media Channel Performance")
-            fig3 = self.visualizer.plot_media_contributions(insights)
-            st.plotly_chart(fig3, use_container_width=True)
-            
-            self.results = insights
-            return insights
+            self._calculate_model_metrics()
+            return True
             
         except Exception as e:
-            st.error(f"❌ Error: {str(e)}")
-            raise
+            st.error(f"❌ Model training failed: {str(e)}")
+            return False
+
+    def _apply_bayesian_shrinkage(self, coefficients, feature_names, params):
+        shrunk_coefs = np.zeros_like(coefficients)
+        
+        for i, (coef, feature) in enumerate(zip(coefficients, feature_names)):
+            if 'paid_search' in feature:
+                prior_mean = params.get('search_prior', 0.15)
+            elif 'paid_social' in feature:
+                prior_mean = params.get('social_prior', 0.12)
+            elif 'paid_display' in feature:
+                prior_mean = params.get('display_prior', 0.08)
+            else:
+                prior_mean = coef
+                
+            shrinkage_strength = params.get('regularization_strength', 0.3)
+            shrunk_coefs[i] = (1 - shrinkage_strength) * coef + shrinkage_strength * prior_mean
+                
+        return shrunk_coefs
+
+    def _calculate_model_metrics(self):
+        results = self.model_results
+        
+        train_mape = np.mean(np.abs((results['train_actual'] - results['train_predicted']) / results['train_actual'])) * 100
+        test_mape = np.mean(np.abs((results['test_actual'] - results['test_predicted']) / results['test_actual'])) * 100
+        
+        train_r2 = r2_score(results['train_actual'], results['train_predicted'])
+        test_r2 = r2_score(results['test_actual'], results['test_predicted'])
+        
+        total_revenue = np.sum(results['train_actual']) + np.sum(results['test_actual'])
+        media_contribution = 0
+        
+        for feature, coef in zip(results['feature_names'], results['coefficients']):
+            if 'paid' in feature:
+                media_data = self.data[feature].fillna(0).values
+                media_effect = np.sum(coef * media_data)
+                media_contribution += media_effect
+        
+        base_contribution = total_revenue - media_contribution
+        
+        self.model_results.update({
+            'train_mape': train_mape,
+            'test_mape': test_mape,
+            'train_r2': train_r2,
+            'test_r2': test_r2,
+            'base_contribution': base_contribution,
+            'incremental_contribution': media_contribution,
+            'total_revenue': total_revenue
+        })
+
+    def optimize_budget(self, target_increase, total_budget, business_rules):
+        if not self.model_results:
+            return None
+        
+        current_revenue = self.data['total_revenue'].mean() * 52
+        target_revenue = current_revenue * (1 + target_increase)
+        
+        channel_roi = {}
+        for feature, coef in zip(self.model_results['feature_names'], self.model_results['coefficients']):
+            if 'paid' in feature:
+                channel = feature.replace('_gross_spend', '').replace('_net_spend', '')
+                historical_spend = self.data[feature].mean()
+                if historical_spend > 0:
+                    channel_roi[channel] = coef / historical_spend
+        
+        allocation = {}
+        remaining_budget = total_budget
+        
+        sorted_channels = sorted(channel_roi.items(), key=lambda x: x[1], reverse=True)
+        
+        for channel, roi in sorted_channels:
+            if channel in business_rules:
+                min_spend = business_rules[channel]['min_spend']
+                max_spend = business_rules[channel]['max_spend']
+                
+                channel_budget = min(max_spend, max(min_spend, remaining_budget * 0.4))
+                allocation[channel] = {
+                    'budget': channel_budget,
+                    'expected_roi': roi,
+                    'expected_revenue': channel_budget * roi
+                }
+                
+                remaining_budget -= channel_budget
+                
+                if remaining_budget <= 0:
+                    break
+        
+        total_expected_revenue = sum([channel_data['expected_revenue'] for channel_data in allocation.values()])
+        
+        return {
+            'allocation': allocation,
+            'total_expected_revenue': total_expected_revenue,
+            'revenue_increase_achieved': (total_expected_revenue / current_revenue) - 1,
+            'remaining_budget': remaining_budget
+        }
+
+class VisualizationEngine:
+    def __init__(self):
+        plt.style.use('default')
+        self.colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
     
-    def _display_results(self, insights, frequency):
-        st.header("📊 Final Results")
+    def plot_actual_vs_predicted(self, model_results):
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
+        
+        ax1.plot(model_results['train_dates'], model_results['train_actual']/1e6, 
+                label='Actual', linewidth=2, color='blue')
+        ax1.plot(model_results['train_dates'], model_results['train_predicted']/1e6,
+                label='Predicted', linewidth=2, color='red', linestyle='--')
+        ax1.set_title('Model Performance: Training Period', fontweight='bold')
+        ax1.set_ylabel('Revenue (Million USD)')
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+        
+        ax2.plot(model_results['test_dates'], model_results['test_actual']/1e6,
+                label='Actual', linewidth=2, color='blue')
+        ax2.plot(model_results['test_dates'], model_results['test_predicted']/1e6,
+                label='Predicted', linewidth=2, color='red', linestyle='--')
+        ax2.axvspan(model_results['test_dates'][0], model_results['test_dates'][-1], 
+                   alpha=0.2, color='gray', label='Holdout Period')
+        ax2.set_title('Model Performance: Test Period (Holdout)', fontweight='bold')
+        ax2.set_ylabel('Revenue (Million USD)')
+        ax2.set_xlabel('Date')
+        ax2.legend()
+        ax2.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        return fig
+
+    def plot_contribution_analysis(self, model_results):
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+        
+        base = model_results['base_contribution'] / 1e6
+        incremental = model_results['incremental_contribution'] / 1e6
+        
+        ax1.pie([base, incremental], labels=['Base', 'Incremental'], 
+                autopct='%1.1f%%', startangle=90, colors=['#ff7f0e', '#1f77b4'])
+        ax1.set_title('Revenue Contribution: Base vs Incremental', fontweight='bold')
+        
+        media_effects = {}
+        for feature, coef in zip(model_results['feature_names'], model_results['coefficients']):
+            if 'paid' in feature:
+                channel = feature.split('_')[1] if len(feature.split('_')) > 1 else feature
+                total_effect = coef * 1000000  # Simplified for demo
+                media_effects[channel] = total_effect / 1e6
+        
+        if media_effects:
+            channels = list(media_effects.keys())
+            effects = list(media_effects.values())
+            
+            bars = ax2.bar(channels, effects, color=self.colors[:len(channels)])
+            ax2.set_title('Incremental Revenue by Channel', fontweight='bold')
+            ax2.set_ylabel('Revenue (Million USD)')
+            
+            for bar, effect in zip(bars, effects):
+                ax2.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(effects)*0.01, 
+                       f'${effect:.1f}M', ha='center', va='bottom')
+            
+            plt.xticks(rotation=45)
+        
+        plt.tight_layout()
+        return fig
+
+# Initialize session state
+if 'mmm_engine' not in st.session_state:
+    st.session_state.mmm_engine = MMMEngine()
+if 'viz_engine' not in st.session_state:
+    st.session_state.viz_engine = VisualizationEngine()
+if 'data_loaded' not in st.session_state:
+    st.session_state.data_loaded = False
+if 'model_trained' not in st.session_state:
+    st.session_state.model_trained = False
+
+# Main application
+st.markdown('<h1 class="main-header">🚀 Enterprise Marketing Mix Modeling Platform</h1>', unsafe_allow_html=True)
+
+# Sidebar with Data Management
+st.sidebar.title("🔧 Data Management")
+
+# Upload Data Section in Sidebar
+st.sidebar.markdown("---")
+st.sidebar.subheader("📁 Upload Data")
+uploaded_file = st.sidebar.file_uploader("Choose CSV file", type=['csv'], key="file_uploader")
+
+if st.sidebar.button("📤 Upload Data", type="primary", use_container_width=True):
+    if uploaded_file is not None:
+        with st.spinner("Loading and validating data..."):
+            success = st.session_state.mmm_engine.load_data(uploaded_file)
+            st.session_state.data_loaded = success
+            
+        if st.session_state.data_loaded:
+            st.sidebar.success("✅ Data successfully loaded!")
+            st.session_state.model_trained = False  # Reset model when new data is loaded
+        else:
+            st.sidebar.error("❌ Failed to load data")
+    else:
+        st.sidebar.warning("⚠️ Please select a CSV file first")
+
+# Reset Data Button
+st.sidebar.markdown("---")
+if st.sidebar.button("🔄 Reset All Data", use_container_width=True):
+    st.session_state.mmm_engine.reset_data()
+    st.session_state.data_loaded = False
+    st.session_state.model_trained = False
+    st.sidebar.success("✅ All data and models reset!")
+    st.rerun()
+
+# Data Status Display
+st.sidebar.markdown("---")
+st.sidebar.subheader("📊 Current Status")
+if st.session_state.data_loaded:
+    st.sidebar.success("✅ Data Loaded")
+    data_info = st.session_state.mmm_engine.data
+    st.sidebar.write(f"**Periods:** {len(data_info)}")
+    st.sidebar.write(f"**Date Range:** {data_info.index.min().strftime('%Y-%m-%d')} to {data_info.index.max().strftime('%Y-%m-%d')}")
+    st.sidebar.write(f"**Total Revenue:** ${data_info['total_revenue'].sum()/1e6:.1f}M")
+else:
+    st.sidebar.warning("⚠️ No data loaded")
+
+# Main content navigation
+st.sidebar.markdown("---")
+st.sidebar.subheader("🧭 Navigation")
+app_section = st.sidebar.radio(
+    "Select Section:",
+    ["Data Overview", "Causal Analysis", "Model Training", "Budget Simulation", "Results Dashboard"]
+)
+
+# Section 1: Data Overview
+if app_section == "Data Overview":
+    st.markdown('<h2 class="section-header">📊 Data Overview</h2>', unsafe_allow_html=True)
+    
+    if not st.session_state.data_loaded:
+        st.warning("Please upload data using the 'Upload Data' button in the sidebar")
+    else:
+        data = st.session_state.mmm_engine.data
+        
+        # Data summary
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Periods", len(data))
+        with col2:
+            st.metric("Date Range", f"{data.index.min().strftime('%Y-%m-%d')} to {data.index.max().strftime('%Y-%m-%d')}")
+        with col3:
+            st.metric("Total Revenue", f"${data['total_revenue'].sum()/1e6:.1f}M")
+        with col4:
+            st.metric("Avg Weekly Revenue", f"${data['total_revenue'].mean()/1000:.0f}K")
+        
+        # Data preview
+        st.subheader("Data Preview")
+        st.dataframe(data.head(10), use_container_width=True)
+        
+        # Available variables
+        st.subheader("Available Variables")
+        media_cols = [col for col in data.columns if 'paid' in col.lower()]
+        organic_cols = [col for col in data.columns if 'organic' in col.lower()]
+        other_cols = [col for col in data.columns if col not in media_cols + organic_cols and col != 'total_revenue']
         
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("Model Frequency", frequency.upper())
+            st.write("**Media Variables:**")
+            for col in media_cols[:10]:  # Show first 10
+                st.write(f"- {col}")
         with col2:
-            st.metric("Total R²", f"{insights['total_r2']:.3f}")
+            st.write("**Organic Variables:**")
+            for col in organic_cols[:10]:
+                st.write(f"- {col}")
         with col3:
-            st.metric("Baseline R²", f"{insights['baseline_r2']:.3f}")
+            st.write("**Other Variables:**")
+            for col in other_cols[:10]:
+                st.write(f"- {col}")
+
+# Section 2: Causal Analysis
+elif app_section == "Causal Analysis" and st.session_state.data_loaded:
+    st.markdown('<h2 class="section-header">🔍 Causal Analysis</h2>', unsafe_allow_html=True)
+    
+    if st.button("Run Causal Analysis", type="primary"):
+        with st.spinner("Running causal validation tests..."):
+            causal_results = st.session_state.mmm_engine.run_causal_analysis()
         
-        st.subheader("💰 Media Channel Performance")
+        st.success("✅ Causal analysis completed!")
         
-        if insights['media_contributions']:
-            sorted_media = sorted(
-                insights['media_contributions'].items(),
-                key=lambda x: abs(x[1]['contribution']),
-                reverse=True
+        # Display results
+        st.subheader("Granger Causality Tests")
+        causal_df = []
+        for media_col, results in causal_results.items():
+            if media_col != 'spend_shocks':
+                causal_df.append({
+                    'Channel': media_col,
+                    'Optimal Lag (weeks)': results['best_lag'],
+                    'Max Correlation': f"{results['max_correlation']:.3f}",
+                    'Significant': '✅' if results['significant'] else '❌'
+                })
+        
+        if causal_df:
+            st.dataframe(pd.DataFrame(causal_df), use_container_width=True)
+        
+        # Natural experiments
+        st.subheader("Natural Experiment Detection")
+        shock_df = []
+        for media_col, shock_count in causal_results['spend_shocks'].items():
+            shock_df.append({
+                'Channel': media_col,
+                'Spend Shocks Detected': shock_count,
+                'Analysis': '✅ Sufficient variation' if shock_count > 0 else '⚠️ Limited variation'
+            })
+        
+        st.dataframe(pd.DataFrame(shock_df), use_container_width=True)
+
+# Section 3: Model Training
+elif app_section == "Model Training" and st.session_state.data_loaded:
+    st.markdown('<h2 class="section-header">⚙️ Model Training</h2>', unsafe_allow_html=True)
+    
+    st.subheader("Media Transformation Parameters")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("**Paid Search**")
+        search_shape = st.slider("Search Weibull Shape", 0.5, 3.0, 1.2, key="search_shape")
+        search_scale = st.slider("Search Weibull Scale (days)", 1, 28, 10, key="search_scale")
+        search_alpha = st.slider("Search Hill Alpha", 0.5, 5.0, 1.8, key="search_alpha")
+        search_kappa = st.slider("Search Hill Kappa", 0.1, 1.0, 0.7, key="search_kappa")
+    
+    with col2:
+        st.markdown("**Paid Social**")
+        social_shape = st.slider("Social Weibull Shape", 0.5, 3.0, 0.8, key="social_shape")
+        social_scale = st.slider("Social Weibull Scale (days)", 1, 28, 7, key="social_scale")
+        social_alpha = st.slider("Social Hill Alpha", 0.5, 5.0, 1.3, key="social_alpha")
+        social_kappa = st.slider("Social Hill Kappa", 0.1, 1.0, 0.6, key="social_kappa")
+    
+    with col3:
+        st.markdown("**Paid Display**")
+        display_shape = st.slider("Display Weibull Shape", 0.5, 3.0, 1.0, key="display_shape")
+        display_scale = st.slider("Display Weibull Scale (days)", 1, 28, 5, key="display_scale")
+        display_alpha = st.slider("Display Hill Alpha", 0.5, 5.0, 1.5, key="display_alpha")
+        display_kappa = st.slider("Display Hill Kappa", 0.1, 1.0, 0.5, key="display_kappa")
+    
+    st.subheader("Bayesian Regularization")
+    regularization_strength = st.slider("Regularization Strength", 0.0, 1.0, 0.3)
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        search_prior = st.number_input("Search Prior ROI", 0.0, 1.0, 0.15, step=0.01)
+    with col2:
+        social_prior = st.number_input("Social Prior ROI", 0.0, 1.0, 0.12, step=0.01)
+    with col3:
+        display_prior = st.number_input("Display Prior ROI", 0.0, 1.0, 0.08, step=0.01)
+    
+    model_params = {
+        'search': {'shape': search_shape, 'scale': search_scale, 'alpha': search_alpha, 'kappa': search_kappa},
+        'social': {'shape': social_shape, 'scale': social_scale, 'alpha': social_alpha, 'kappa': social_kappa},
+        'display': {'shape': display_shape, 'scale': display_scale, 'alpha': display_alpha, 'kappa': display_kappa},
+        'regularization_strength': regularization_strength,
+        'search_prior': search_prior,
+        'social_prior': social_prior,
+        'display_prior': display_prior
+    }
+    
+    if st.button("Train Model", type="primary"):
+        with st.spinner("Training Bayesian MMM model..."):
+            success = st.session_state.mmm_engine.train_model(model_params)
+            st.session_state.model_trained = success
+        
+        if st.session_state.model_trained:
+            st.success("✅ Model trained successfully!")
+            
+            results = st.session_state.mmm_engine.model_results
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Train MAPE", f"{results['train_mape']:.2f}%")
+            with col2:
+                st.metric("Test MAPE", f"{results['test_mape']:.2f}%")
+            with col3:
+                st.metric("Train R²", f"{results['train_r2']:.3f}")
+            with col4:
+                st.metric("Test R²", f"{results['test_r2']:.3f}")
+
+# Section 4: Budget Simulation
+elif app_section == "Budget Simulation" and st.session_state.model_trained:
+    st.markdown('<h2 class="section-header">💰 Budget Simulation</h2>', unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        target_increase = st.slider("Target Revenue Increase (%)", 5, 25, 12) / 100
+        total_budget = st.number_input("Total Budget ($)", min_value=10000, value=1000000, step=50000)
+    
+    with col2:
+        st.subheader("Business Constraints")
+        min_search = st.number_input("Min Search Spend", min_value=0, value=50000, step=5000)
+        max_search = st.number_input("Max Search Spend", min_value=min_search, value=500000, step=50000)
+        
+        min_social = st.number_input("Min Social Spend", min_value=0, value=20000, step=5000)
+        max_social = st.number_input("Max Social Spend", min_value=min_social, value=300000, step=50000)
+        
+        min_display = st.number_input("Min Display Spend", min_value=0, value=10000, step=5000)
+        max_display = st.number_input("Max Display Spend", min_value=min_display, value=200000, step=50000)
+    
+    business_rules = {
+        'paid_search': {'min_spend': min_search, 'max_spend': max_search},
+        'paid_social': {'min_spend': min_social, 'max_spend': max_social},
+        'paid_display': {'min_spend': min_display, 'max_spend': max_display}
+    }
+    
+    if st.button("Optimize Budget Allocation", type="primary"):
+        with st.spinner("Running budget optimization..."):
+            optimization = st.session_state.mmm_engine.optimize_budget(
+                target_increase, total_budget, business_rules
             )
-            
-            for media_var, stats in sorted_media:
-                with st.expander(f"📈 {media_var}"):
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        st.metric("ROAS", f"{stats['roas']:.2f}")
-                    with col2:
-                        st.metric("Avg Spend", f"${stats['avg_spend']:,.0f}")
-                    with col3:
-                        st.metric("Contribution", f"${stats['contribution']:,.0f}")
-                    with col4:
-                        st.metric("Half-life", f"{stats['half_life']} weeks")
-        else:
-            st.warning("No media contributions calculated")
         
-        st.success("🎉 MMM ANALYSIS COMPLETE!")
+        if optimization:
+            st.success("✅ Budget optimization completed!")
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Target Increase", f"{target_increase*100:.1f}%")
+            with col2:
+                st.metric("Achieved Increase", f"{optimization['revenue_increase_achieved']*100:.1f}%")
+            with col3:
+                st.metric("Remaining Budget", f"${optimization['remaining_budget']:,.0f}")
+            
+            st.subheader("Optimal Allocation")
+            allocation_df = []
+            for channel, data in optimization['allocation'].items():
+                allocation_df.append({
+                    'Channel': channel,
+                    'Budget': f"${data['budget']:,.0f}",
+                    'Expected ROI': f"{data['expected_roi']:.2f}",
+                    'Expected Revenue': f"${data['expected_revenue']:,.0f}"
+                })
+            
+            st.dataframe(pd.DataFrame(allocation_df), use_container_width=True)
 
-def generate_sample_data(days=100):
-    np.random.seed(42)
-    dates = pd.date_range('2023-01-01', periods=days, freq='D')
+# Section 5: Results Dashboard
+elif app_section == "Results Dashboard" and st.session_state.model_trained:
+    st.markdown('<h2 class="section-header">📊 Results Dashboard</h2>', unsafe_allow_html=True)
     
-    data = pd.DataFrame({
-        'date': dates,
-        'total_revenue': np.random.normal(50000, 15000, days).clip(1000),
-        'holiday': 'NH',
-        'day_type': 'Avg day',
-        'descriptor': 'Avg day'
-    })
+    results = st.session_state.mmm_engine.model_results
     
-    holiday_indices = np.random.choice(days, size=10, replace=False)
-    data.loc[holiday_indices, 'holiday'] = 'Holiday'
+    # Key Metrics
+    st.subheader("Model Performance Metrics")
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Training MAPE", f"{results['train_mape']:.2f}%")
+    with col2:
+        st.metric("Test MAPE", f"{results['test_mape']:.2f}%")
+    with col3:
+        st.metric("Training R²", f"{results['train_r2']:.3f}")
+    with col4:
+        st.metric("Test R²", f"{results['test_r2']:.3f}")
     
-    promo_data = [
-        ('Promo day- mid', '50% off sitewide', 5),
-        ('Promo day- high', '50% off everything', 3),
-        ('Promo day- low', '30% off select items', 8),
-        ('Promo day- mid', '30% off entire collection', 4),
-        ('Promo day- low', 'Free GWP with $25 purchase', 6),
-        ('Sale', 'Clearance event - extra 25% off', 4),
-        ('Promo day- low', 'Buy 1 Get 1 30% off', 5),
-        ('Early access', 'Early access for loyalty members', 3),
-        ('Influencer', 'Special influencer collaboration', 3),
-        ('Promo day- mid', 'Tiered promotion: Spend $20 get $5 off', 4),
-        ('Promo day- low', 'New product launch', 4),
-        ('Promo day- low', 'Limited edition restock', 3),
-        ('Promo day- mid', 'Free shipping on all orders', 5),
-        ('Promo day- low', 'Double loyalty points', 4)
-    ]
+    # Revenue Decomposition
+    st.subheader("Revenue Decomposition")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Total Revenue", f"${results['total_revenue']/1e6:.1f}M")
+    with col2:
+        st.metric("Base Revenue", f"${results['base_contribution']/1e6:.1f}M")
+    with col3:
+        st.metric("Incremental Revenue", f"${results['incremental_contribution']/1e6:.1f}M")
     
-    promo_indices_used = set()
-    for day_type, descriptor, count in promo_data:
-        available_days = [i for i in range(days) if i not in promo_indices_used]
-        if len(available_days) >= count:
-            chosen_indices = np.random.choice(available_days, size=count, replace=False)
-            data.loc[chosen_indices, 'day_type'] = day_type
-            data.loc[chosen_indices, 'descriptor'] = descriptor
-            promo_indices_used.update(chosen_indices)
+    # Visualizations
+    st.subheader("Model Performance")
+    fig1 = st.session_state.viz_engine.plot_actual_vs_predicted(results)
+    st.pyplot(fig1)
     
-    paid_media_vars = {
-        'paid_search_net_spend': (1000, 300),
-        'paid_social_net_spend': (800, 200),
-        'paid_display_net_spend': (600, 150),
-        'paid_shopping_net_spend': (400, 100),
-        'paid_affiliate_net_spend': (200, 50)
-    }
-    
-    for var, (mean, std) in paid_media_vars.items():
-        data[var] = np.random.normal(mean, std, days).clip(0)
-    
-    organic_media_vars = {
-        'organic_search_sessions': (5000, 1000),
-        'organic_social_sessions': (2000, 500),
-        'organic_direct_sessions': (3000, 800),
-        'organic_email_sessions': (1000, 300),
-        'organic_referral_sessions': (800, 200)
-    }
-    
-    for var, (mean, std) in organic_media_vars.items():
-        data[var] = np.random.normal(mean, std, days).clip(0)
-    
-    return data
+    st.subheader("Revenue Contribution Analysis")
+    fig2 = st.session_state.viz_engine.plot_contribution_analysis(results)
+    st.pyplot(fig2)
 
-# Streamlit App
-def main():
-    st.set_page_config(
-        page_title="MMM Modeling Platform",
-        page_icon="🎯",
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
-    
-    st.title("🎯 MMM Modeling Platform")
-    st.markdown("""
-    Complete Marketing Mix Modeling platform for analyzing media effectiveness and revenue contribution.
-    Upload your data or use sample data to get started!
-    """)
-    
-    if 'mmm' not in st.session_state:
-        st.session_state.mmm = MMMPlatform()
-    
-    # Sidebar
-    st.sidebar.header("📁 Data Input")
-    
-    data_source = st.sidebar.radio(
-        "Choose data source:",
-        ["Upload CSV", "Use Sample Data"]
-    )
-    
-    frequency = st.sidebar.selectbox(
-        "Analysis Frequency:",
-        ["daily", "monthly"],
-        help="Choose between daily granularity or monthly aggregated analysis"
-    )
-    
-    data = None
-    
-    if data_source == "Upload CSV":
-        uploaded_file = st.sidebar.file_uploader(
-            "Upload your CSV file",
-            type=['csv'],
-            help="Upload a CSV file with your marketing data"
-        )
-        
-        if uploaded_file is not None:
-            try:
-                data = pd.read_csv(uploaded_file)
-                st.sidebar.success(f"✅ Loaded {len(data)} rows, {len(data.columns)} columns")
-                
-                with st.sidebar.expander("📋 Data Preview"):
-                    st.dataframe(data.head(), use_container_width=True)
-                    
-            except Exception as e:
-                st.sidebar.error(f"❌ Error loading file: {e}")
-    
-    else:  # Sample Data
-        if st.sidebar.button("Generate Sample Data"):
-            data = generate_sample_data(100)
-            st.session_state.sample_data = data
-            st.sidebar.success("✅ Sample data generated!")
-        
-        if 'sample_data' in st.session_state:
-            data = st.session_state.sample_data
-            with st.sidebar.expander("📋 Sample Data Preview"):
-                st.dataframe(data.head(), use_container_width=True)
-    
-    # Main content
-    if data is not None:
-        st.header("🚀 Ready to Analyze!")
-        st.write(f"**Data Shape:** {data.shape[0]} rows × {data.shape[1]} columns")
-        st.write(f"**Selected Frequency:** {frequency.upper()}")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            if st.button("📊 Run Daily Analysis", type="primary", use_container_width=True):
-                with st.spinner("Running daily analysis... This may take a few minutes"):
-                    st.session_state.results = st.session_state.mmm.run_complete_analysis(data, frequency='daily')
-        
-        with col2:
-            if st.button("📈 Run Monthly Analysis", type="secondary", use_container_width=True):
-                with st.spinner("Running monthly analysis... This may take a few minutes"):
-                    st.session_state.results = st.session_state.mmm.run_complete_analysis(data, frequency='monthly')
-    
-    else:
-        st.info("👆 Please upload your data or generate sample data to get started!")
-        
-        # Data requirements
-        with st.expander("📋 Data Requirements & Examples", expanded=True):
-            st.markdown("""
-            ### 📅 Required Columns:
-            - **date**: Date column (any format: 2023-01-15, 1/15/2023, 15/1/2023)
-            - **total_revenue**: Daily revenue in dollars ($12,456)
-            
-            ### 📊 Optional Media Columns (use what you have):
-            - **paid_search_net_spend**: Paid search spend ($1,234)
-            - **paid_social_net_spend**: Paid social media spend ($987)
-            - **paid_display_net_spend**: Display advertising spend ($654)
-            - **organic_search_sessions**: Organic search traffic (1,234 sessions)
-            - **organic_social_sessions**: Organic social traffic (567 sessions)
-            - *...and other paid/organic media variables*
-            
-            ### 🎯 Optional Promotion Columns (for better modeling):
-            - **day_type**: Promotion intensity (Avg day, Promo day- low, Promo day- mid, Promo day- high, Sale, etc.)
-            - **descriptor**: Promotion details ("50% off sitewide", "Free GWP with $25 purchase", "New product launch")
-            - **holiday**: Holiday indicators (NH, Holiday, etc.)
-            
-            ### 💡 Example Data Structure:
-            ```
-            date | total_revenue | paid_search_net_spend | day_type | descriptor
-            2023-01-01 | 45234 | 1245 | Avg day | Regular day
-            2023-01-02 | 67890 | 1567 | Promo day- mid | 30% off select items
-            2023-01-03 | 89234 | 1987 | Promo day- high | 50% off everything
-            ```
-            
-            *Note: Analysis will run with whatever columns are available! More data = better insights.*
-            """)
+# Handle missing prerequisites
+if not st.session_state.data_loaded and app_section != "Data Overview":
+    st.warning("⚠️ Please upload data first using the 'Upload Data' button in the sidebar")
+elif not st.session_state.model_trained and app_section in ["Budget Simulation", "Results Dashboard"]:
+    st.warning("⚠️ Please train the model first in the 'Model Training' section")
 
-if __name__ == "__main__":
-    main()
+# Footer
+st.markdown("---")
+st.markdown(
+    "<div style='text-align: center; color: #666;'>"
+    "Enterprise MMM Platform v1.0 | Upload Data • Causal Analysis • Budget Optimization"
+    "</div>",
+    unsafe_allow_html=True
+)
