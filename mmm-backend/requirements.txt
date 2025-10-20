@@ -1,4 +1,4 @@
-pip install --upgrade pip
+! pip install --upgrade pip
 streamlit==1.28.0
 pandas==2.1.0
 numpy==1.25.0
