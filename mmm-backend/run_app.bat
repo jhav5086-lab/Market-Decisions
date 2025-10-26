@@ -2,5 +2,5 @@
 echo Installing dependencies...
 pip install -r requirements.txt
 echo Starting Media Mix Model Analyzer...
-streamlit run mmm_app.py
+streamlit run app.py
 pause
